@@ -1,0 +1,21 @@
+services:
+  steinbach:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      STEINBACH_DEMO_SEED: "1"
+      STEINBACH_COOKIE_SECURE: "0"
+      STEINBACH_DEV_SHOW_TOKENS: "1"
+      STEINBACH_PUBLIC_BASE_URL: "http://localhost:8000"
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./backups:/app/backups
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

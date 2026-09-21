@@ -1,0 +1,12 @@
+data/*.db
+data/*.db-wal
+data/*.db-shm
+uploads/*
+!uploads/.gitkeep
+backups/*
+!backups/.gitkeep
+.env
+__pycache__/
+*.pyc
+vapid_private.pem
+*.pem
