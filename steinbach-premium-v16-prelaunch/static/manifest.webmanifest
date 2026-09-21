@@ -1,0 +1,17 @@
+{
+  "name": "Immobilienservice Steinbach",
+  "short_name": "Steinbach",
+  "description": "Kundenportal, Auftragsmanagement und Objektservice von Immobilienservice Steinbach.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f4ef",
+  "theme_color": "#0b1d22",
+  "lang": "de-DE",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {"src":"assets/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"assets/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
+    {"src":"assets/icons/icon-maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}
+  ]
+}
