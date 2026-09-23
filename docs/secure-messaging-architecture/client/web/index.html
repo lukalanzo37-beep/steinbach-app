@@ -118,6 +118,12 @@
   /* ---------- Top-Icon-Leiste (Tab-Modus) ---------- */
 
   #topbar { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 0; }
+  .wordmark-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .wordmark {
+    font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em;
+    color: var(--ink); white-space: nowrap;
+  }
+  .wordmark-col .header-sub { justify-content: center; }
 
   /* ---------- Chat-Detail-Header ---------- */
 
@@ -264,7 +270,10 @@
     <button class="icon-btn" id="menu-btn" aria-label="Einstellungen">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="15" cy="6" r="2.2" fill="var(--bg)"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="9" cy="12" r="2.2" fill="var(--bg)"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="17" cy="18" r="2.2" fill="var(--bg)"/></svg>
     </button>
-    <span class="header-sub"><span class="status-dot" id="status-dot"></span><span id="status-text">Verbinde…</span></span>
+    <div class="wordmark-col">
+      <div class="wordmark">SECURE MESSENGER SECRET</div>
+      <span class="header-sub"><span class="status-dot" id="status-dot"></span><span id="status-text">Verbinde…</span></span>
+    </div>
     <button class="icon-btn" id="compose-btn" aria-label="Kontakt hinzufügen">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>
     </button>
