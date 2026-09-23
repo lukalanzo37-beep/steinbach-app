@@ -1,8 +1,9 @@
 <title>Cipher Wire</title>
-<meta name="description" content="Zwei-Personen E2EE-Chat-Demo im Browser: echte NaCl crypto_box-Verschlüsselung, live einsehbar, kein Server, kein Install.">
+<meta name="description" content="Echter E2EE-Chat zwischen zwei Geräten im Browser: NaCl crypto_box mit Forward Secrecy pro Nachricht, Transport über einen öffentlichen Test-Relay.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@4.3.7/dist/mqtt.min.js"></script>
 
 <style>
   :root {
@@ -12,14 +13,15 @@
     --ink: #1a2030;
     --ink-muted: #5b6472;
     --hairline: #c7cfda;
-    --alice: #1f6f61;
-    --alice-soft: #e1f0ec;
-    --bob: #9a5327;
-    --bob-soft: #f5e8dc;
+    --me: #1f6f61;
+    --me-soft: #e1f0ec;
+    --them: #9a5327;
+    --them-soft: #f5e8dc;
     --wire: #94a2b5;
     --danger: #a3341f;
     --danger-soft: #f7e3de;
     --ok: #1f6f61;
+    --warn: #8a6d1f;
     color-scheme: light;
   }
 
@@ -31,14 +33,15 @@
       --ink: #e9ecf2;
       --ink-muted: #97a1b3;
       --hairline: #333c52;
-      --alice: #5fd0b8;
-      --alice-soft: #1c332f;
-      --bob: #e2985f;
-      --bob-soft: #3a2a1c;
+      --me: #5fd0b8;
+      --me-soft: #1c332f;
+      --them: #e2985f;
+      --them-soft: #3a2a1c;
       --wire: #4a5670;
       --danger: #e37a63;
       --danger-soft: #3a2320;
       --ok: #5fd0b8;
+      --warn: #e0c168;
       color-scheme: dark;
     }
   }
@@ -50,14 +53,15 @@
     --ink: #e9ecf2;
     --ink-muted: #97a1b3;
     --hairline: #333c52;
-    --alice: #5fd0b8;
-    --alice-soft: #1c332f;
-    --bob: #e2985f;
-    --bob-soft: #3a2a1c;
+    --me: #5fd0b8;
+    --me-soft: #1c332f;
+    --them: #e2985f;
+    --them-soft: #3a2a1c;
     --wire: #4a5670;
     --danger: #e37a63;
     --danger-soft: #3a2320;
     --ok: #5fd0b8;
+    --warn: #e0c168;
     color-scheme: dark;
   }
 
@@ -102,20 +106,20 @@
     border-bottom: 1px solid var(--hairline);
   }
 
-  .home-hint {
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-    padding: 10px 12px;
-    font-size: 0.78rem;
-    color: var(--ink-muted);
+  .status-row {
     display: flex;
-    gap: 8px;
-    align-items: baseline;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: var(--ink-muted);
+    margin-top: 8px;
   }
-  .home-hint strong { color: var(--ink); font-weight: 600; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-muted); flex: none; }
+  .status-dot.live { background: var(--ok); }
+  .status-dot.warn { background: var(--warn); }
+  .status-dot.error { background: var(--danger); }
 
-  .panel {
+  .card {
     background: var(--surface);
     border: 1px solid var(--hairline);
     border-radius: 14px;
@@ -125,113 +129,26 @@
     gap: 10px;
   }
 
-  .panel-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .who {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .card h2 {
+    font-size: 0.85rem;
     font-weight: 600;
-    font-size: 0.95rem;
-  }
-
-  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-  .dot.alice { background: var(--alice); }
-  .dot.bob { background: var(--bob); }
-
-  .fingerprint {
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.68rem;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
     color: var(--ink-muted);
   }
 
-  .wire-track {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 2px 4px;
-    min-height: 20px;
-  }
-  .wire-line {
-    flex: 1;
-    height: 1px;
-    background: var(--wire);
-    position: relative;
-    overflow: visible;
-  }
-  .packet {
-    position: absolute;
-    top: 50%;
-    left: 0;
-    transform: translate(-50%, -50%);
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 0.62rem;
+  .idbox {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.68rem;
+    word-break: break-all;
     background: var(--surface-2);
-    border: 1px solid var(--hairline);
-    border-radius: 6px;
-    padding: 2px 6px;
-    white-space: nowrap;
-    opacity: 0;
-  }
-  .packet.run {
-    animation: travel 1.1s ease-in-out;
-  }
-  .packet.run-rev {
-    animation: travel-rev 1.1s ease-in-out;
-  }
-  @keyframes travel {
-    0% { left: 0%; opacity: 0; }
-    12% { opacity: 1; }
-    88% { opacity: 1; }
-    100% { left: 100%; opacity: 0; }
-  }
-  @keyframes travel-rev {
-    0% { left: 100%; opacity: 0; }
-    12% { opacity: 1; }
-    88% { opacity: 1; }
-    100% { left: 0%; opacity: 0; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .packet.run, .packet.run-rev { animation: none; opacity: 1; }
-  }
-
-  .log {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-height: 180px;
-    overflow-y: auto;
-  }
-
-  .bubble {
-    max-width: 85%;
-    padding: 7px 10px;
-    border-radius: 10px;
-    font-size: 0.88rem;
-    line-height: 1.35;
-  }
-  .bubble.mine.alice { align-self: flex-end; background: var(--alice-soft); border: 1px solid var(--alice); }
-  .bubble.mine.bob { align-self: flex-end; background: var(--bob-soft); border: 1px solid var(--bob); }
-  .bubble.theirs { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--hairline); }
-  .bubble.empty { color: var(--ink-muted); font-style: italic; font-size: 0.8rem; }
-
-  form { display: flex; gap: 8px; }
-  input[type="text"] {
-    flex: 1;
-    background: var(--surface-2);
-    border: 1px solid var(--hairline);
     border-radius: 8px;
     padding: 8px 10px;
-    color: var(--ink);
-    font-size: 0.9rem;
-    font-family: inherit;
-    min-width: 0;
+    line-height: 1.5;
   }
-  input[type="text"]:focus { outline: 2px solid var(--alice); outline-offset: 1px; }
+
+  .row { display: flex; gap: 8px; }
 
   button {
     font-family: inherit;
@@ -241,10 +158,54 @@
     border: 1px solid transparent;
     padding: 8px 12px;
     cursor: pointer;
+    background: var(--surface-2);
+    color: var(--ink);
   }
-  .send.alice { background: var(--alice); color: var(--surface); }
-  .send.bob { background: var(--bob); color: var(--surface); }
-  .send:active { transform: translateY(1px); }
+  button.primary { background: var(--me); color: var(--surface); border-color: var(--me); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  input[type="text"] {
+    flex: 1;
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--ink);
+    font-size: 0.85rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    min-width: 0;
+  }
+  input[type="text"]:focus { outline: 2px solid var(--me); outline-offset: 1px; }
+
+  .contact-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .contact-name { font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--them); flex: none; }
+
+  .log {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .bubble {
+    max-width: 85%;
+    padding: 7px 10px;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    line-height: 1.35;
+  }
+  .bubble.mine { align-self: flex-end; background: var(--me-soft); border: 1px solid var(--me); }
+  .bubble.theirs { align-self: flex-start; background: var(--them-soft); border: 1px solid var(--them); }
+  .bubble.system { align-self: center; color: var(--ink-muted); font-size: 0.72rem; font-style: italic; }
+  .bubble.empty { color: var(--ink-muted); font-style: italic; font-size: 0.8rem; align-self: center; }
+
+  form.sendform { display: flex; gap: 8px; }
 
   details.techlog {
     background: var(--surface);
@@ -252,36 +213,25 @@
     border-radius: 14px;
     padding: 12px 14px;
   }
-  details.techlog summary {
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 0.9rem;
-  }
+  details.techlog summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
   .techlines {
     margin-top: 10px;
     display: flex;
     flex-direction: column;
     gap: 3px;
     font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     color: var(--ink-muted);
     word-break: break-all;
+    max-height: 220px;
+    overflow-y: auto;
   }
   .techlines .ok { color: var(--ok); }
   .techlines .fail { color: var(--danger); }
+  .techlines .warn { color: var(--warn); }
 
-  .tests {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .tests button {
-    background: var(--surface-2);
-    color: var(--ink);
-    border: 1px solid var(--hairline);
-    font-size: 0.75rem;
-    padding: 6px 9px;
-  }
+  .tests { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tests button { font-size: 0.75rem; padding: 6px 9px; }
 
   footer {
     color: var(--ink-muted);
@@ -290,55 +240,56 @@
     padding-top: 4px;
     border-top: 1px solid var(--hairline);
   }
-  footer a { color: inherit; }
 </style>
 
 <main>
   <header>
     <h1>Cipher Wire</h1>
     <p class="subtitle">
-      Zwei lokale Identitäten, echte Ende-zu-Ende-Verschlüsselung
-      (NaCl <code>crypto_box</code>, X25519 + XSalsa20-Poly1305) — läuft
-      komplett hier im Browser, kein Server beteiligt.
+      Echte Ende-zu-Ende-Verschlüsselung zwischen zwei getrennten Geräten:
+      NaCl <code>crypto_box</code>, pro Nachricht ein neues, signiertes
+      Ephemeral-Schlüsselpaar (Forward Secrecy) — Transport über ein
+      öffentliches MQTT-Test-Relay.
     </p>
+    <div class="status-row">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Verbinde…</span>
+    </div>
   </header>
 
-  <div class="home-hint">
-    <span>⇪</span>
-    <span><strong>Zum Home-Bildschirm:</strong> Safari-Teilen-Symbol → "Zum Home-Bildschirm" — dann startet die Demo wie eine App, ganz ohne Installation.</span>
-  </div>
-
-  <section class="panel" id="panel-alice">
-    <div class="panel-head">
-      <div class="who"><span class="dot alice"></span>Alice</div>
-      <div class="fingerprint" id="fp-alice">Schlüssel wird erzeugt…</div>
+  <section class="card">
+    <h2>Meine Identität</h2>
+    <div class="idbox" id="my-id">wird erzeugt…</div>
+    <div class="row">
+      <button id="copy-id" type="button">ID kopieren</button>
+      <button id="reset-id" type="button">Neue Identität</button>
     </div>
-    <div class="log" id="log-alice">
-      <div class="bubble empty">Noch keine Nachrichten.</div>
-    </div>
-    <form id="form-alice">
-      <input type="text" id="input-alice" placeholder="Nachricht an Bob…" autocomplete="off">
-      <button type="submit" class="send alice">Senden</button>
-    </form>
   </section>
 
-  <div class="wire-track">
-    <div class="wire-line" id="wire">
-      <div class="packet" id="packet"></div>
+  <section class="card" id="add-contact-card">
+    <h2>Kontakt hinzufügen</h2>
+    <p class="subtitle" style="margin:0;">
+      ID vom anderen Gerät hier einfügen (persönlich/außerhalb dieses Kanals
+      austauschen, sonst ist eine Man-in-the-Middle-Zuordnung nicht
+      ausgeschlossen — siehe Fallstrick Nr. 2 im Architektur-Dokument).
+    </p>
+    <div class="row">
+      <input type="text" id="contact-input" placeholder="boxPubHex.signPubHex">
+      <button id="add-contact" class="primary" type="button">Hinzufügen</button>
     </div>
-  </div>
+  </section>
 
-  <section class="panel" id="panel-bob">
-    <div class="panel-head">
-      <div class="who"><span class="dot bob"></span>Bob</div>
-      <div class="fingerprint" id="fp-bob">Schlüssel wird erzeugt…</div>
+  <section class="card" id="chat-card" hidden>
+    <div class="contact-head">
+      <div class="contact-name"><span class="dot"></span><span id="contact-label">Kontakt</span></div>
+      <button id="remove-contact" type="button">Entfernen</button>
     </div>
-    <div class="log" id="log-bob">
+    <div class="log" id="chat-log">
       <div class="bubble empty">Noch keine Nachrichten.</div>
     </div>
-    <form id="form-bob">
-      <input type="text" id="input-bob" placeholder="Nachricht an Alice…" autocomplete="off">
-      <button type="submit" class="send bob">Senden</button>
+    <form class="sendform" id="send-form">
+      <input type="text" id="send-input" placeholder="Nachricht…" style="font-family:inherit;" autocomplete="off">
+      <button type="submit" class="primary">Senden</button>
     </form>
   </section>
 
@@ -346,19 +297,27 @@
     <summary>Technisches Log &amp; Gegenproben</summary>
     <div class="tests" style="margin-top:10px;">
       <button id="test-tamper" type="button">Manipulierten Ciphertext testen</button>
-      <button id="test-wrongsender" type="button">Falschen Absender testen</button>
+      <button id="test-forged-eph" type="button">Gefälschte Ephemeral-Signatur testen</button>
       <button id="test-clear" type="button">Log leeren</button>
     </div>
     <div class="techlines" id="techlines"></div>
   </details>
 
   <footer>
-    Referenz-Implementierung derselben Verschlüsselung wie
-    <code>client/ios/E2EECryptoManager.swift</code> und
-    <code>client/android/E2EECryptoManager.kt</code> in diesem Repo —
-    hier als TweetNaCl.js im Browser statt nativ. Schlüssel existieren nur
-    im Arbeitsspeicher dieses Tabs und sind weg, sobald du die Seite
-    schließt.
+    Jede Nachricht nutzt ein frisches, per Ed25519 signiertes Ephemeral-
+    X25519-Schlüsselpaar (ähnlich X3DH) statt direkt den Langzeit-Key — ein
+    später gestohlener Langzeit-Private-Key entschlüsselt damit keine
+    bereits verschickten Nachrichten (Forward Secrecy gegen
+    Sender-Kompromittierung; volle Double-Ratchet-Sicherheit inkl.
+    Empfänger-Seite ist ein offener Punkt, siehe README Fallstrick Nr. 1).
+    Transport läuft über den öffentlichen Test-Broker
+    <code>test.mosquitto.org</code> als Platzhalter für den echten
+    "blinden" Relay-Server (<code>backend/src/main.rs</code>) — Inhalte
+    bleiben E2EE-verschlüsselt, aber Topic-Namen/Zeitpunkte sind auf diesem
+    öffentlichen Broker für Dritte einsehbar. Identitäts-Keys liegen zum
+    Testen im <code>localStorage</code> dieses Browsers (Klartext, keine
+    Keychain/Keystore-Absicherung) — siehe die nativen Referenzdateien für
+    die gehärtete Variante.
   </footer>
 </main>
 
@@ -366,20 +325,19 @@
 (function () {
   "use strict";
 
+  // ---------- Hilfsfunktionen ----------
+
   function toHex(bytes) {
     return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
   }
-  function shortHex(bytes, n) {
-    return toHex(bytes.slice(0, n || 6)) + "…";
+  function fromHex(hex) {
+    var bytes = new Uint8Array(hex.length / 2);
+    for (var i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return bytes;
   }
+  function shortHex(bytes, n) { return toHex(bytes.slice(0, n || 6)) + "…"; }
   function utf8Encode(str) { return new TextEncoder().encode(str); }
   function utf8Decode(bytes) { return new TextDecoder().decode(bytes); }
-
-  var alice = nacl.box.keyPair();
-  var bob = nacl.box.keyPair();
-
-  document.getElementById("fp-alice").textContent = shortHex(alice.publicKey, 8);
-  document.getElementById("fp-bob").textContent = shortHex(bob.publicKey, 8);
 
   var techlines = document.getElementById("techlines");
   function logLine(text, cls) {
@@ -390,90 +348,304 @@
     techlines.scrollTop = techlines.scrollHeight;
   }
 
-  function appendBubble(logId, text, mineClass, isMine) {
-    var log = document.getElementById(logId);
-    var empty = log.querySelector(".bubble.empty");
-    if (empty) empty.remove();
-    var div = document.createElement("div");
-    div.className = "bubble " + (isMine ? "mine " + mineClass : "theirs");
-    div.textContent = text;
-    log.appendChild(div);
+  function setStatus(state, text) {
+    var dot = document.getElementById("status-dot");
+    dot.className = "status-dot " + state;
+    document.getElementById("status-text").textContent = text;
+  }
+
+  function safeLocalStorage() {
+    try {
+      var k = "__cipherwire_probe__";
+      localStorage.setItem(k, "1");
+      localStorage.removeItem(k);
+      return localStorage;
+    } catch (e) { return null; }
+  }
+  var storage = safeLocalStorage();
+  function storageGet(key) { try { return storage ? storage.getItem(key) : null; } catch (e) { return null; } }
+  function storageSet(key, val) { try { if (storage) storage.setItem(key, val); } catch (e) {} }
+  function storageRemove(key) { try { if (storage) storage.removeItem(key); } catch (e) {} }
+
+  // ---------- Identität (Langzeit-Schlüssel: Box für Verschlüsselung, Sign für Authentizität) ----------
+
+  function generateIdentity() {
+    var box = nacl.box.keyPair();
+    var sign = nacl.sign.keyPair();
+    return {
+      boxPub: box.publicKey, boxSec: box.secretKey,
+      signPub: sign.publicKey, signSec: sign.secretKey
+    };
+  }
+  function serializeIdentity(id) {
+    return toHex(id.boxSec) + "." + toHex(id.signSec);
+  }
+  function deserializeIdentity(s) {
+    var parts = s.split(".");
+    var boxSec = fromHex(parts[0]);
+    var signSec = fromHex(parts[1]);
+    return {
+      boxSec: boxSec, boxPub: nacl.box.keyPair.fromSecretKey(boxSec).publicKey,
+      signSec: signSec, signPub: nacl.sign.keyPair.fromSecretKey(signSec).publicKey
+    };
+  }
+  function idString(id) { return toHex(id.boxPub) + "." + toHex(id.signPub); }
+  function parseIdString(s) {
+    var parts = s.trim().split(".");
+    if (parts.length !== 2 || parts[0].length !== 64 || parts[1].length !== 64) return null;
+    return { boxPub: fromHex(parts[0]), signPub: fromHex(parts[1]) };
+  }
+
+  var me = (function () {
+    var stored = storageGet("cipherwire_identity");
+    if (stored) {
+      try { return deserializeIdentity(stored); } catch (e) { /* fällt durch zu Neuerzeugung */ }
+    }
+    var fresh = generateIdentity();
+    storageSet("cipherwire_identity", serializeIdentity(fresh));
+    return fresh;
+  })();
+
+  document.getElementById("my-id").textContent = idString(me);
+
+  document.getElementById("copy-id").addEventListener("click", function () {
+    var text = idString(me);
+    navigator.clipboard.writeText(text).catch(function () {
+      var sel = window.getSelection(), range = document.createRange();
+      range.selectNodeContents(document.getElementById("my-id"));
+      sel.removeAllRanges(); sel.addRange(range);
+    });
+  });
+
+  document.getElementById("reset-id").addEventListener("click", function () {
+    storageRemove("cipherwire_identity");
+    storageRemove("cipherwire_contact");
+    storageRemove("cipherwire_history");
+    location.reload();
+  });
+
+  // ---------- Kontakt ----------
+
+  var contact = null;
+  var history = [];
+  (function loadContact() {
+    var stored = storageGet("cipherwire_contact");
+    if (!stored) return;
+    var parsed = parseIdString(stored);
+    if (parsed) contact = parsed;
+    var storedHistory = storageGet("cipherwire_history");
+    if (storedHistory) {
+      try { history = JSON.parse(storedHistory); } catch (e) { history = []; }
+    }
+  })();
+
+  function saveHistory() { storageSet("cipherwire_history", JSON.stringify(history)); }
+
+  function showChatUI() {
+    document.getElementById("add-contact-card").hidden = !!contact;
+    document.getElementById("chat-card").hidden = !contact;
+    if (contact) {
+      document.getElementById("contact-label").textContent = shortHex(contact.boxPub, 6);
+      renderHistory();
+    }
+  }
+
+  function renderHistory() {
+    var log = document.getElementById("chat-log");
+    log.innerHTML = "";
+    if (history.length === 0) {
+      log.innerHTML = '<div class="bubble empty">Noch keine Nachrichten.</div>';
+      return;
+    }
+    history.forEach(function (m) {
+      var div = document.createElement("div");
+      div.className = "bubble " + (m.mine ? "mine" : "theirs");
+      div.textContent = m.text;
+      log.appendChild(div);
+    });
     log.scrollTop = log.scrollHeight;
   }
 
-  function runPacketAnimation(reverse, label, done) {
-    var packet = document.getElementById("packet");
-    packet.textContent = label;
-    packet.className = "packet " + (reverse ? "run-rev" : "run");
-    void packet.offsetWidth; // Reflow erzwingen, damit die Animation neu startet
-    setTimeout(function () {
-      packet.className = "packet";
-      if (done) done();
-    }, 1100);
+  function appendMessage(text, mine) {
+    history.push({ text: text, mine: mine, t: Date.now() });
+    saveHistory();
+    renderHistory();
   }
 
-  // Entspricht encryptMessage()/decryptMessage() in den nativen
-  // E2EECryptoManager-Dateien: crypto_box_easy / crypto_box_open_easy.
-  function encrypt(plaintext, recipientPublicKey, senderSecretKey) {
+  document.getElementById("add-contact").addEventListener("click", function () {
+    var raw = document.getElementById("contact-input").value;
+    var parsed = parseIdString(raw);
+    if (!parsed) {
+      logLine("✗ Ungültiges ID-Format (erwartet: 64 Hex-Zeichen . 64 Hex-Zeichen)", "fail");
+      return;
+    }
+    contact = parsed;
+    storageSet("cipherwire_contact", toHex(parsed.boxPub) + "." + toHex(parsed.signPub));
+    history = [];
+    saveHistory();
+    subscribeInbox();
+    showChatUI();
+  });
+
+  document.getElementById("remove-contact").addEventListener("click", function () {
+    contact = null;
+    history = [];
+    storageRemove("cipherwire_contact");
+    storageRemove("cipherwire_history");
+    showChatUI();
+  });
+
+  // ---------- Kryptografie: signiertes Ephemeral crypto_box (Forward Secrecy) ----------
+  //
+  // Statt direkt mit dem Langzeit-Box-Key zu verschlüsseln, erzeugt der
+  // Sender pro Nachricht ein frisches X25519-Ephemeral-Paar, signiert dessen
+  // Public Key mit dem eigenen Langzeit-Ed25519-Signaturschlüssel (bindet
+  // die Ephemeral-Identität an den Absender) und verschlüsselt mit
+  // (ephemeralSecret, empfängerBoxPub). Der Ephemeral-Secret-Key wird sofort
+  // nach dem Senden verworfen -- ein später gestohlener Langzeit-Box-Key
+  // des Senders erlaubt damit KEINE Entschlüsselung dieser Nachricht mehr.
+
+  function encryptForward(plaintext, recipientBoxPub) {
+    var eph = nacl.box.keyPair();
+    var ephSig = nacl.sign.detached(eph.publicKey, me.signSec);
     var nonce = nacl.randomBytes(24);
-    var messageBytes = utf8Encode(plaintext);
-    var ciphertext = nacl.box(messageBytes, nonce, recipientPublicKey, senderSecretKey);
-    return { ciphertext: ciphertext, nonce: nonce };
+    var ciphertext = nacl.box(utf8Encode(plaintext), nonce, recipientBoxPub, eph.secretKey);
+    // eph.secretKey verlässt diese Funktion nicht und wird hier nicht
+    // weiter referenziert -- der einzige Verweis darauf verschwindet mit
+    // Ende dieses Funktionsaufrufs (best effort in JS ohne manuelles
+    // Speicher-Zeroing, siehe README Fallstrick Nr. 7).
+    return {
+      senderBoxPub: toHex(me.boxPub),
+      senderSignPub: toHex(me.signPub),
+      ephPub: toHex(eph.publicKey),
+      ephSig: toHex(ephSig),
+      nonce: toHex(nonce),
+      ciphertext: toHex(ciphertext)
+    };
   }
-  function decrypt(envelope, senderPublicKey, recipientSecretKey) {
-    var opened = nacl.box.open(envelope.ciphertext, envelope.nonce, senderPublicKey, recipientSecretKey);
+
+  function decryptForward(envelope, expectedSignPub, myBoxSec) {
+    var ephPub = fromHex(envelope.ephPub);
+    var ephSig = fromHex(envelope.ephSig);
+    var signPub = expectedSignPub || fromHex(envelope.senderSignPub);
+
+    var sigOk = nacl.sign.detached.verify(ephPub, ephSig, signPub);
+    if (!sigOk) throw new Error("Ephemeral-Signatur ungültig");
+
+    var opened = nacl.box.open(fromHex(envelope.ciphertext), fromHex(envelope.nonce), ephPub, myBoxSec);
     if (!opened) throw new Error("Entschlüsselung fehlgeschlagen");
     return utf8Decode(opened);
   }
 
-  function wireUp(formId, inputId, fromLogId, toLogId, fromClass, fromKeys, toKeys, reverse) {
-    document.getElementById(formId).addEventListener("submit", function (ev) {
-      ev.preventDefault();
-      var input = document.getElementById(inputId);
-      var text = input.value.trim();
-      if (!text) return;
-      input.value = "";
+  // ---------- Transport: öffentliches MQTT-Test-Relay (Platzhalter für main.rs) ----------
 
-      appendBubble(fromLogId, text, fromClass, true);
+  var TOPIC_PREFIX = "cipherwire-demo-v1/";
+  var mqttClient = null;
 
-      var envelope = encrypt(text, toKeys.publicKey, fromKeys.secretKey);
-      logLine("→ verschlüsselt (" + fromClass + "): " + shortHex(envelope.ciphertext, 10));
+  function topicFor(boxPubHex) { return TOPIC_PREFIX + boxPubHex; }
 
-      runPacketAnimation(reverse, shortHex(envelope.ciphertext, 5), function () {
-        try {
-          var plain = decrypt(envelope, fromKeys.publicKey, toKeys.secretKey);
-          appendBubble(toLogId, plain, fromClass, false);
-          logLine("✓ entschlüsselt & verifiziert beim Empfänger", "ok");
-        } catch (e) {
-          logLine("✗ " + e.message, "fail");
-        }
-      });
+  function connectTransport() {
+    setStatus("warn", "Verbinde mit Relay…");
+    mqttClient = mqtt.connect("wss://test.mosquitto.org:8081/mqtt", {
+      clientId: "cipherwire-" + Math.random().toString(16).slice(2),
+      reconnectPeriod: 4000
+    });
+
+    mqttClient.on("connect", function () {
+      setStatus("live", "Verbunden (öffentliches Test-Relay)");
+      logLine("✓ Transport verbunden", "ok");
+      subscribeInbox();
+    });
+    mqttClient.on("reconnect", function () { setStatus("warn", "Verbindung wird neu aufgebaut…"); });
+    mqttClient.on("close", function () { setStatus("warn", "Getrennt"); });
+    mqttClient.on("error", function (err) {
+      setStatus("error", "Verbindungsfehler");
+      logLine("✗ Transportfehler: " + (err && err.message ? err.message : err), "fail");
+    });
+
+    mqttClient.on("message", function (topic, payloadBuf) {
+      var envelope;
+      try { envelope = JSON.parse(payloadBuf.toString()); } catch (e) { return; }
+      if (!contact) return;
+      if (envelope.senderBoxPub !== toHex(contact.boxPub)) {
+        logLine("✗ Nachricht von unbekannter/nicht hinzugefügter ID ignoriert", "warn");
+        return;
+      }
+      try {
+        var plain = decryptForward(envelope, contact.signPub, me.boxSec);
+        appendMessage(plain, false);
+        logLine("✓ Nachricht empfangen, Signatur + Verschlüsselung verifiziert", "ok");
+      } catch (e) {
+        logLine("✗ Empfangene Nachricht verworfen: " + e.message, "fail");
+      }
     });
   }
 
-  wireUp("form-alice", "input-alice", "log-alice", "log-bob", "alice", alice, bob, false);
-  wireUp("form-bob", "input-bob", "log-bob", "log-alice", "bob", bob, alice, true);
+  function subscribeInbox() {
+    if (!mqttClient || !mqttClient.connected) return;
+    mqttClient.subscribe(topicFor(toHex(me.boxPub)));
+  }
+
+  connectTransport();
+
+  // ---------- Senden ----------
+
+  document.getElementById("send-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    if (!contact) return;
+    var input = document.getElementById("send-input");
+    var text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+
+    appendMessage(text, true);
+    var envelope = encryptForward(text, contact.boxPub);
+    logLine("→ gesendet, Ephemeral-Key " + shortHex(fromHex(envelope.ephPub), 6) + ", Ciphertext " + shortHex(fromHex(envelope.ciphertext), 8));
+
+    if (mqttClient && mqttClient.connected) {
+      mqttClient.publish(topicFor(toHex(contact.boxPub)), JSON.stringify(envelope));
+    } else {
+      logLine("✗ Nicht verbunden -- Nachricht konnte nicht gesendet werden", "fail");
+    }
+  });
+
+  showChatUI();
+
+  // ---------- Gegenproben ----------
 
   document.getElementById("test-tamper").addEventListener("click", function () {
-    var env = encrypt("Testnachricht für Manipulationsprobe", bob.publicKey, alice.secretKey);
-    var tampered = new Uint8Array(env.ciphertext);
+    var targetPub = contact ? contact.boxPub : nacl.box.keyPair().publicKey;
+    var env = encryptForward("Testnachricht für Manipulationsprobe", targetPub);
+    var tampered = fromHex(env.ciphertext);
     tampered[0] ^= 0xff;
+    env.ciphertext = toHex(tampered);
     logLine("Gegenprobe: 1 Bit im Ciphertext verändert …");
     try {
-      decrypt({ ciphertext: tampered, nonce: env.nonce }, alice.publicKey, bob.secretKey);
+      decryptForward(env, fromHex(env.senderSignPub), me.boxSec);
       logLine("✗ Fehler: Manipulation hätte erkannt werden müssen!", "fail");
     } catch (e) {
       logLine("✓ korrekt abgelehnt: " + e.message, "ok");
     }
   });
 
-  document.getElementById("test-wrongsender").addEventListener("click", function () {
-    var mallory = nacl.box.keyPair();
-    var env = encrypt("Testnachricht für Absenderprobe", bob.publicKey, alice.secretKey);
-    logLine("Gegenprobe: Entschlüsselung mit falschem Absender-Public-Key …");
+  document.getElementById("test-forged-eph").addEventListener("click", function () {
+    // Simuliert einen Angreifer, der einen eigenen Ephemeral-Key einschleust,
+    // ohne die passende Signatur des echten Langzeit-Signaturschlüssels zu
+    // besitzen -- genau das verhindert die Ephemeral-Signaturprüfung.
+    var attacker = generateIdentity();
+    var forgedEph = nacl.box.keyPair();
+    var forgedSig = nacl.sign.detached(forgedEph.publicKey, attacker.signSec); // falscher Signaturschlüssel
+    var nonce = nacl.randomBytes(24);
+    var ciphertext = nacl.box(utf8Encode("gefälscht"), nonce, me.boxPub, forgedEph.secretKey);
+    var forgedEnvelope = {
+      senderBoxPub: toHex(me.boxPub), senderSignPub: toHex(me.signPub), // gibt vor, "ich" zu sein
+      ephPub: toHex(forgedEph.publicKey), ephSig: toHex(forgedSig),
+      nonce: toHex(nonce), ciphertext: toHex(ciphertext)
+    };
+    logLine("Gegenprobe: gefälschte Ephemeral-Signatur (falscher Signaturschlüssel) …");
     try {
-      decrypt(env, mallory.publicKey, bob.secretKey);
-      logLine("✗ Fehler: falscher Absender hätte erkannt werden müssen!", "fail");
+      decryptForward(forgedEnvelope, me.signPub, me.boxSec);
+      logLine("✗ Fehler: gefälschte Signatur hätte erkannt werden müssen!", "fail");
     } catch (e) {
       logLine("✓ korrekt abgelehnt: " + e.message, "ok");
     }
@@ -483,7 +655,6 @@
     techlines.innerHTML = "";
   });
 
-  logLine("Alice Public Key: " + toHex(alice.publicKey));
-  logLine("Bob   Public Key: " + toHex(bob.publicKey));
+  logLine("Meine ID: " + idString(me));
 })();
 </script>
