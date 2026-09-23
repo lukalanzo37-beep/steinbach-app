@@ -24,13 +24,15 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/jedisct1/swift-sodium.git", from: "0.9.1")
+        .package(url: "https://github.com/jedisct1/swift-sodium.git", from: "0.9.1"),
+        .package(url: "https://github.com/emqx/CocoaMQTT.git", from: "2.1.6")
     ],
     targets: [
         .executableTarget(
             name: "AppModule",
             dependencies: [
-                .product(name: "Sodium", package: "swift-sodium")
+                .product(name: "Sodium", package: "swift-sodium"),
+                .product(name: "CocoaMQTT", package: "CocoaMQTT")
             ],
             path: "Sources"
         )

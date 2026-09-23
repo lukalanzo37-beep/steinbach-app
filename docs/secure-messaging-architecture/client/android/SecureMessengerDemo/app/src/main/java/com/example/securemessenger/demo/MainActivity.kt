@@ -1,90 +1,42 @@
 /*
  * MainActivity.kt
  *
- * Zeigt denselben Ablauf wie docs/secure-messaging-architecture/demo_e2ee.py:
- * Alice (dieses Gerät) verschlüsselt eine Nachricht für Bob, Bob
- * entschlüsselt sie, danach zwei Gegenproben (Manipulation, falscher
- * Absender). Nutzt echte NaCl crypto_box-Aufrufe über LazySodium -- keine
- * Mock-/Fake-Kryptografie.
+ * UI-Spiegel der Web-Demo (client/web/index.html): eigene Identität,
+ * Kontakt per ID hinzufügen, echter Chat über MQTT (siehe
+ * ../../../../../../../../PROTOCOL.md), Gegenproben im Tech-Log.
  */
 
 package com.example.securemessenger.demo
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.icons.Icons
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
-data class DemoLogLine(val text: String, val isHeading: Boolean = false)
-
-private fun ByteArray.hexPreview(count: Int = 16): String =
-    take(count).joinToString("") { "%02x".format(it) } + "…"
-
-private fun runDemo(): List<DemoLogLine> {
-    val log = mutableListOf<DemoLogLine>()
-    fun add(text: String, heading: Boolean = false) = log.add(DemoLogLine(text, heading))
-
-    val crypto = DemoCrypto()
-    try {
-        add("1. Schlüsselerzeugung (je Gerät lokal)", heading = true)
-        val alice = crypto.generateIdentity()
-        val bob = crypto.generateIdentity()
-        add("Alice Public Key: ${alice.publicKey.asBytes.hexPreview()}")
-        add("Bob   Public Key: ${bob.publicKey.asBytes.hexPreview()}")
-
-        add("2. Alice verschlüsselt eine Nachricht für Bob", heading = true)
-        val message = "Hallo Bob, dieser Text ist Ende-zu-Ende verschlüsselt."
-        val envelope = crypto.encrypt(message, bob.publicKey.asBytes, alice.secretKey.asBytes)
-        add("Klartext:   $message")
-        add("Nonce:      ${envelope.nonce.joinToString("") { "%02x".format(it) }}")
-        add("Ciphertext: ${envelope.ciphertext.hexPreview(32)}")
-
-        add("3. Bob entschlüsselt und verifiziert", heading = true)
-        val decrypted = crypto.decrypt(envelope, alice.publicKey.asBytes, bob.secretKey.asBytes)
-        add("Entschlüsselt: $decrypted")
-        add(if (decrypted == message) "✅ Stimmt mit Original überein" else "❌ Unterschied!")
-
-        add("4. Gegenprobe: manipulierter Ciphertext", heading = true)
-        val tampered = envelope.ciphertext.copyOf()
-        tampered[0] = (tampered[0].toInt() xor 0xFF).toByte()
-        try {
-            crypto.decrypt(DemoEnvelope(tampered, envelope.nonce), alice.publicKey.asBytes, bob.secretKey.asBytes)
-            add("❌ Fehler: Manipulation hätte erkannt werden müssen!")
-        } catch (e: DemoCryptoException) {
-            add("✅ Erwartetes Verhalten: ${e.message}")
-        }
-
-        add("5. Gegenprobe: falscher Absender", heading = true)
-        val mallory = crypto.generateIdentity()
-        try {
-            crypto.decrypt(envelope, mallory.publicKey.asBytes, bob.secretKey.asBytes)
-            add("❌ Fehler: falscher Absender hätte erkannt werden müssen!")
-        } catch (e: DemoCryptoException) {
-            add("✅ Erwartetes Verhalten: ${e.message}")
-        }
-    } catch (e: Exception) {
-        add("Fehler: ${e.message}")
-    }
-    return log
-}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,7 +44,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    DemoScreen()
+                    val model = remember { AppModel(applicationContext) }
+                    DemoScreen(model)
                 }
             }
         }
@@ -100,8 +53,9 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun DemoScreen() {
-    var log by remember { mutableStateOf<List<DemoLogLine>>(emptyList()) }
+fun DemoScreen(model: AppModel) {
+    val clipboard = androidx.compose.ui.platform.LocalContext.current
+        .getSystemService(ClipboardManager::class.java)
 
     Column(
         modifier = Modifier
@@ -109,21 +63,125 @@ fun DemoScreen() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("NaCl crypto_box Demo (Android)", style = MaterialTheme.typography.titleMedium)
-
-        Button(onClick = { log = runDemo() }, modifier = Modifier.fillMaxWidth()) {
-            Text("Demo starten")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            StatusDot(model.connectionStatus)
+            Text(model.connectionStatusText, style = MaterialTheme.typography.bodySmall)
         }
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            items(log) { line ->
-                Text(
-                    text = line.text,
-                    fontWeight = if (line.isHeading) FontWeight.Bold else FontWeight.Normal,
-                    style = if (line.isHeading) MaterialTheme.typography.bodyMedium
-                            else MaterialTheme.typography.bodySmall
-                )
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("MEINE IDENTITÄT", style = MaterialTheme.typography.labelSmall)
+                Text(model.me.idString, style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = {
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("Cipher Wire ID", model.me.idString))
+                }) { Text("ID kopieren") }
+            }
+        }
+
+        if (model.contact == null) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("KONTAKT HINZUFÜGEN", style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        "ID vom anderen Gerät außerhalb dieses Kanals austauschen (persönlich/QR) — sonst ist eine Man-in-the-Middle-Zuordnung nicht ausgeschlossen.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = model.contactInputText,
+                        onValueChange = { model.contactInputText = it },
+                        label = { Text("boxPubHex.signPubHex") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(onClick = { model.addContact() }) { Text("Hinzufügen") }
+                }
+            }
+        } else {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            model.contact!!.boxPublicKey.toHex().take(12) + "…",
+                            fontWeight = FontWeight.Bold
+                        )
+                        OutlinedButton(onClick = { model.removeContact() }) { Text("Entfernen") }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (model.messages.isEmpty()) {
+                            item { Text("Noch keine Nachrichten.", style = MaterialTheme.typography.bodySmall) }
+                        }
+                        items(model.messages) { m ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = if (m.mine) Arrangement.End else Arrangement.Start
+                            ) {
+                                Surface(
+                                    color = if (m.mine) Color(0xFFDCEFE9) else Color(0xFFF5E3D3),
+                                    shape = MaterialTheme.shapes.medium
+                                ) {
+                                    Text(m.text, modifier = Modifier.padding(8.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = model.sendText,
+                            onValueChange = { model.sendText = it },
+                            label = { Text("Nachricht…") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(onClick = { model.send() }) { Text("Senden") }
+                    }
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("TECHNISCHES LOG & GEGENPROBEN", style = MaterialTheme.typography.labelSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { model.runTamperTest() }) { Text("Manipulation testen") }
+                    OutlinedButton(onClick = { model.runForgedSignatureTest() }) { Text("Fake-Signatur testen") }
+                }
+                OutlinedButton(onClick = { model.clearLog() }) { Text("Log leeren") }
+                LazyColumn(modifier = Modifier.heightIn(max = 220.dp)) {
+                    items(model.techLog) { entry ->
+                        Text(
+                            entry.text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colorFor(entry.kind)
+                        )
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun StatusDot(status: ConnectionStatus) {
+    val color = when (status) {
+        ConnectionStatus.LIVE -> Color(0xFF1F6F61)
+        ConnectionStatus.WARN, ConnectionStatus.CONNECTING -> Color(0xFF8A6D1F)
+        ConnectionStatus.ERROR -> Color(0xFFA3341F)
+    }
+    Surface(color = color, shape = MaterialTheme.shapes.small) {
+        androidx.compose.foundation.layout.Box(modifier = Modifier.padding(4.dp))
+    }
+}
+
+private fun colorFor(kind: LogKind): Color = when (kind) {
+    LogKind.OK -> Color(0xFF1F6F61)
+    LogKind.FAIL -> Color(0xFFA3341F)
+    LogKind.WARN -> Color(0xFF8A6D1F)
+    LogKind.INFO -> Color.Gray
 }

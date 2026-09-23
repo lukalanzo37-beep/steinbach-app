@@ -1,131 +1,184 @@
 //
 //  ContentView.swift
 //
-//  Zeigt denselben Ablauf wie docs/secure-messaging-architecture/demo_e2ee.py:
-//  Alice (dieses Gerät) verschlüsselt eine Nachricht für Bob, Bob
-//  entschlüsselt sie, danach zwei Gegenproben (Manipulation, falscher
-//  Absender). Nutzt echte NaCl crypto_box-Aufrufe über Swift-Sodium --
-//  keine Mock-/Fake-Kryptografie.
+//  UI-Spiegel der Web-Demo (client/web/index.html): eigene Identität,
+//  Kontakt per ID hinzufügen, echter Chat über MQTT (siehe
+//  ../../../PROTOCOL.md), Gegenproben im Tech-Log.
 //
 
 import SwiftUI
 
-struct DemoLogLine: Identifiable {
-    let id = UUID()
-    let text: String
-    let isHeading: Bool
-}
-
-@MainActor
-final class DemoViewModel: ObservableObject {
-    @Published var log: [DemoLogLine] = []
-    @Published var isRunning = false
-
-    private let crypto = DemoCrypto()
-
-    private func add(_ text: String, heading: Bool = false) {
-        log.append(DemoLogLine(text: text, isHeading: heading))
-    }
-
-    private func hexPreview(_ data: Data, count: Int = 16) -> String {
-        data.prefix(count).map { String(format: "%02x", $0) }.joined() + "…"
-    }
-
-    func runDemo() {
-        log.removeAll()
-        isRunning = true
-        defer { isRunning = false }
-
-        do {
-            add("1. Schlüsselerzeugung (je Gerät lokal)", heading: true)
-            let alice = try crypto.generateIdentity()
-            let bob = try crypto.generateIdentity()
-            add("Alice Public Key: \(hexPreview(alice.publicKey))")
-            add("Bob   Public Key: \(hexPreview(bob.publicKey))")
-
-            add("2. Alice verschlüsselt eine Nachricht für Bob", heading: true)
-            let message = "Hallo Bob, dieser Text ist Ende-zu-Ende verschlüsselt."
-            let envelope = try crypto.encrypt(
-                plaintext: message,
-                recipientPublicKey: bob.publicKey,
-                senderSecretKey: alice.secretKey
-            )
-            add("Klartext:   \(message)")
-            add("Nonce:      \(envelope.nonce.map { String(format: "%02x", $0) }.joined())")
-            add("Ciphertext: \(hexPreview(envelope.ciphertext, count: 32))")
-
-            add("3. Bob entschlüsselt und verifiziert", heading: true)
-            let decrypted = try crypto.decrypt(
-                envelope: envelope,
-                senderPublicKey: alice.publicKey,
-                recipientSecretKey: bob.secretKey
-            )
-            add("Entschlüsselt: \(decrypted)")
-            add(decrypted == message ? "✅ Stimmt mit Original überein" : "❌ Unterschied!")
-
-            add("4. Gegenprobe: manipulierter Ciphertext", heading: true)
-            var tampered = envelope.ciphertext
-            tampered[tampered.startIndex] ^= 0xFF
-            do {
-                _ = try crypto.decrypt(
-                    envelope: DemoEnvelope(ciphertext: tampered, nonce: envelope.nonce),
-                    senderPublicKey: alice.publicKey,
-                    recipientSecretKey: bob.secretKey
-                )
-                add("❌ Fehler: Manipulation hätte erkannt werden müssen!")
-            } catch {
-                add("✅ Erwartetes Verhalten: \(error.localizedDescription)")
-            }
-
-            add("5. Gegenprobe: falscher Absender", heading: true)
-            let mallory = try crypto.generateIdentity()
-            do {
-                _ = try crypto.decrypt(
-                    envelope: envelope,
-                    senderPublicKey: mallory.publicKey,
-                    recipientSecretKey: bob.secretKey
-                )
-                add("❌ Fehler: falscher Absender hätte erkannt werden müssen!")
-            } catch {
-                add("✅ Erwartetes Verhalten: \(error.localizedDescription)")
-            }
-        } catch {
-            add("Fehler: \(error.localizedDescription)")
-        }
-    }
-}
-
 struct ContentView: View {
-    @StateObject private var viewModel = DemoViewModel()
+    @StateObject private var model = AppModel()
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                Text("NaCl crypto_box Demo (iOS)")
-                    .font(.headline)
-
-                Button(action: viewModel.runDemo) {
-                    Label("Demo starten", systemImage: "lock.shield")
-                        .frame(maxWidth: .infinity)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    header
+                    identityCard
+                    if model.contact == nil {
+                        addContactCard
+                    } else {
+                        chatCard
+                    }
+                    techLogSection
                 }
+                .padding()
+            }
+            .navigationTitle("Cipher Wire")
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+            Text(model.connectionStatusText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var statusColor: Color {
+        switch model.connectionStatus {
+        case .live: return .green
+        case .warn, .connecting: return .yellow
+        case .error: return .red
+        }
+    }
+
+    private var identityCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("MEINE IDENTITÄT").font(.caption.bold()).foregroundStyle(.secondary)
+            Text(model.me.idString)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            Button {
+                UIPasteboard.general.string = model.me.idString
+            } label: {
+                Label("ID kopieren", systemImage: "doc.on.doc")
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var addContactCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("KONTAKT HINZUFÜGEN").font(.caption.bold()).foregroundStyle(.secondary)
+            Text("ID vom anderen Gerät außerhalb dieses Kanals austauschen (persönlich/QR) — sonst ist eine Man-in-the-Middle-Zuordnung nicht ausgeschlossen.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("boxPubHex.signPubHex", text: $model.contactInputText)
+                .font(.system(.footnote, design: .monospaced))
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            Button("Hinzufügen") { model.addContact() }
                 .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isRunning)
-                .padding(.horizontal)
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var chatCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(model.contact.map { String($0.boxPublicKey.hexString.prefix(12)) + "…" } ?? "")
+                    .font(.subheadline.bold())
+                Spacer()
+                Button("Entfernen") { model.removeContact() }
+                    .font(.caption)
+            }
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        if model.messages.isEmpty {
+                            Text("Noch keine Nachrichten.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        }
+                        ForEach(model.messages) { m in
+                            HStack {
+                                if m.mine { Spacer() }
+                                Text(m.text)
+                                    .padding(8)
+                                    .background(
+                                        (m.mine ? Color.green : Color.orange).opacity(0.18),
+                                        in: RoundedRectangle(cornerRadius: 10)
+                                    )
+                                if !m.mine { Spacer() }
+                            }
+                            .id(m.id)
+                        }
+                    }
+                }
+                .frame(maxHeight: 260)
+                .onChange(of: model.messages.count) { _, _ in
+                    if let last = model.messages.last {
+                        withAnimation { proxy.scrollTo(last.id) }
+                    }
+                }
+            }
+
+            HStack {
+                TextField("Nachricht…", text: $model.sendText)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { model.send() }
+                Button("Senden") { model.send() }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var techLogSection: some View {
+        DisclosureGroup("Technisches Log & Gegenproben") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Button("Manipulierten Ciphertext testen") { model.runTamperTest() }
+                    Button("Gefälschte Signatur testen") { model.runForgedSignatureTest() }
+                }
+                .buttonStyle(.bordered)
+                .font(.caption)
+
+                Button("Log leeren") { model.clearLog() }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
 
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(viewModel.log) { line in
-                            Text(line.text)
-                                .font(line.isHeading ? .subheadline.bold() : .system(.footnote, design: .monospaced))
-                                .foregroundStyle(line.isHeading ? .primary : .secondary)
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(model.techLog) { entry in
+                            Text(entry.text)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(color(for: entry.kind))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    .padding(.horizontal)
                 }
+                .frame(maxHeight: 200)
             }
-            .padding(.top)
-            .navigationTitle("Secure Messenger Demo")
+            .padding(.top, 8)
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func color(for kind: LogKind) -> Color {
+        switch kind {
+        case .ok: return .green
+        case .fail: return .red
+        case .warn: return .yellow
+        case .info: return .secondary
         }
     }
 }

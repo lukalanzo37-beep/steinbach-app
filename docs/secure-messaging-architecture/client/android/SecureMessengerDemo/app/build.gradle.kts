@@ -45,4 +45,9 @@ dependencies {
     // (../E2EECryptoManager.kt): LazySodium bindet libsodium via JNA.
     implementation("com.goterl:lazysodium-android:5.1.0@aar")
     implementation("net.java.dev.jna:jna:5.13.0@aar")
+
+    // MQTT-Transport zum selben öffentlichen Test-Broker wie die Web-Demo
+    // (siehe ../../../PROTOCOL.md) -- Platzhalter für den echten
+    // "blinden" Relay-Server in backend/src/main.rs.
+    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
 }
