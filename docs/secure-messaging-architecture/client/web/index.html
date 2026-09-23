@@ -1,325 +1,446 @@
 <title>Cipher Wire</title>
-<meta name="description" content="Echter E2EE-Chat zwischen zwei Geräten im Browser: NaCl crypto_box mit Forward Secrecy pro Nachricht, Transport über einen öffentlichen Test-Relay.">
+<meta name="description" content="Ende-zu-Ende-verschlüsselter Chat zwischen zwei Geräten: NaCl crypto_box mit Forward Secrecy pro Nachricht, nichts unverschlüsselt nachverfolgbar.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@4.3.7/dist/mqtt.min.js"></script>
 
 <style>
   :root {
-    --bg: #eef1f5;
+    --bg: #f3f5f8;
+    --header: #ffffff;
     --surface: #ffffff;
-    --surface-2: #e3e8ee;
-    --ink: #1a2030;
-    --ink-muted: #5b6472;
-    --hairline: #c7cfda;
-    --me: #1f6f61;
-    --me-soft: #e1f0ec;
-    --them: #9a5327;
-    --them-soft: #f5e8dc;
-    --wire: #94a2b5;
-    --danger: #a3341f;
-    --danger-soft: #f7e3de;
-    --ok: #1f6f61;
-    --warn: #8a6d1f;
+    --surface-2: #eceef2;
+    --composer-bg: #ffffff;
+    --ink: #12151b;
+    --ink-muted: #667085;
+    --hairline: #e3e6ec;
+    --accent: #1c8f76;
+    --accent-ink: #ffffff;
+    --accent-soft: #dcf4ee;
+    --them-bubble: #eceef2;
+    --danger: #c4402c;
+    --ok: #1c8f76;
+    --warn: #a36c10;
+    --shadow: 0 1px 2px rgba(20, 24, 33, 0.06), 0 8px 24px rgba(20, 24, 33, 0.05);
     color-scheme: light;
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #12161f;
-      --surface: #1a2030;
-      --surface-2: #232a3c;
-      --ink: #e9ecf2;
-      --ink-muted: #97a1b3;
-      --hairline: #333c52;
-      --me: #5fd0b8;
-      --me-soft: #1c332f;
-      --them: #e2985f;
-      --them-soft: #3a2a1c;
-      --wire: #4a5670;
-      --danger: #e37a63;
-      --danger-soft: #3a2320;
-      --ok: #5fd0b8;
-      --warn: #e0c168;
+      --bg: #0e1116;
+      --header: #14181f;
+      --surface: #171b22;
+      --surface-2: #1e232c;
+      --composer-bg: #14181f;
+      --ink: #eef0f3;
+      --ink-muted: #8b93a3;
+      --hairline: #262b35;
+      --accent: #4fd6b8;
+      --accent-ink: #05201a;
+      --accent-soft: #17332c;
+      --them-bubble: #232a35;
+      --danger: #ef8672;
+      --ok: #4fd6b8;
+      --warn: #e3b256;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
       color-scheme: dark;
     }
   }
 
   :root[data-theme="dark"] {
-    --bg: #12161f;
-    --surface: #1a2030;
-    --surface-2: #232a3c;
-    --ink: #e9ecf2;
-    --ink-muted: #97a1b3;
-    --hairline: #333c52;
-    --me: #5fd0b8;
-    --me-soft: #1c332f;
-    --them: #e2985f;
-    --them-soft: #3a2a1c;
-    --wire: #4a5670;
-    --danger: #e37a63;
-    --danger-soft: #3a2320;
-    --ok: #5fd0b8;
-    --warn: #e0c168;
+    --bg: #0e1116;
+    --header: #14181f;
+    --surface: #171b22;
+    --surface-2: #1e232c;
+    --composer-bg: #14181f;
+    --ink: #eef0f3;
+    --ink-muted: #8b93a3;
+    --hairline: #262b35;
+    --accent: #4fd6b8;
+    --accent-ink: #05201a;
+    --accent-soft: #17332c;
+    --them-bubble: #232a35;
+    --danger: #ef8672;
+    --ok: #4fd6b8;
+    --warn: #e3b256;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
     color-scheme: dark;
   }
 
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
 
   body {
     background: var(--bg);
     color: var(--ink);
     font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-    padding-inline: 16px;
-    padding-block: 20px;
     display: flex;
     justify-content: center;
   }
 
-  main {
+  #app {
     width: 100%;
-    max-width: 460px;
+    max-width: 480px;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    min-height: 0;
   }
 
-  h1 {
-    font-family: "IBM Plex Serif", Georgia, serif;
-    font-weight: 600;
-    font-size: 1.5rem;
-    letter-spacing: -0.01em;
-    margin: 0;
-    text-wrap: balance;
-  }
+  .icon { width: 18px; height: 18px; flex: none; display: block; }
+  .icon-sm { width: 14px; height: 14px; }
 
-  .subtitle {
-    color: var(--ink-muted);
-    font-size: 0.85rem;
-    line-height: 1.4;
-    margin: 4px 0 0;
-  }
+  /* ---------- Header ---------- */
 
   header {
-    padding-bottom: 4px;
+    flex: none;
+    background: var(--header);
     border-bottom: 1px solid var(--hairline);
-  }
-
-  .status-row {
+    padding: 10px 14px;
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 0.72rem;
-    color: var(--ink-muted);
-    margin-top: 8px;
+    gap: 10px;
   }
-  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-muted); flex: none; }
+
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 500; font-size: 0.72rem;
+    flex: none;
+  }
+
+  .header-text { min-width: 0; flex: 1; }
+  .header-title {
+    font-weight: 600; font-size: 0.98rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .header-sub {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 0.72rem; color: var(--ink-muted);
+  }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-muted); flex: none; }
   .status-dot.live { background: var(--ok); }
   .status-dot.warn { background: var(--warn); }
   .status-dot.error { background: var(--danger); }
 
-  .card {
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: none; color: var(--ink-muted);
+    cursor: pointer; flex: none;
+  }
+  .icon-btn:active { background: var(--surface-2); }
+
+  /* ---------- Onboarding (kein Kontakt) ---------- */
+
+  #onboarding {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 18px;
+    padding: 24px 20px 32px;
+  }
+  .lockmark {
+    width: 52px; height: 52px; border-radius: 16px;
+    background: var(--accent-soft); color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto;
+  }
+  .lockmark .icon { width: 26px; height: 26px; }
+  #onboarding h1 {
+    text-align: center; font-size: 1.3rem; font-weight: 700; margin: 0;
+    text-wrap: balance;
+  }
+  #onboarding .lede {
+    text-align: center; color: var(--ink-muted); font-size: 0.85rem;
+    line-height: 1.5; max-width: 320px; margin: 0 auto;
+  }
+
+  .field-card {
     background: var(--surface);
     border: 1px solid var(--hairline);
-    border-radius: 14px;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .field-label {
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--ink-muted);
+  }
+  .idbox {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.68rem; word-break: break-all; line-height: 1.5;
+    background: var(--surface-2); border-radius: 10px; padding: 10px 12px;
+  }
+
+  .btn-row { display: flex; gap: 8px; }
+  button { font-family: inherit; }
+  .btn {
+    font-size: 0.83rem; font-weight: 500;
+    border-radius: 10px; border: 1px solid var(--hairline);
+    padding: 9px 14px; cursor: pointer;
+    background: var(--surface-2); color: var(--ink);
+    display: inline-flex; align-items: center; gap: 6px; justify-content: center;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.danger { color: var(--danger); }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+  .btn.full { width: 100%; }
+
+  .textline {
+    flex: 1; min-width: 0;
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: var(--ink);
+    font-size: 0.85rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  .textline:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field-hint { font-size: 0.72rem; color: var(--ink-muted); line-height: 1.45; }
+
+  /* ---------- Chat ---------- */
+
+  #chat-area {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     padding: 14px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 4px;
   }
-
-  .card h2 {
-    font-size: 0.85rem;
-    font-weight: 600;
-    margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
+  .day-empty {
+    margin: auto;
+    text-align: center;
     color: var(--ink-muted);
+    font-size: 0.8rem;
+    display: flex; flex-direction: column; gap: 6px; align-items: center;
   }
 
-  .idbox {
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.68rem;
-    word-break: break-all;
-    background: var(--surface-2);
-    border-radius: 8px;
-    padding: 8px 10px;
-    line-height: 1.5;
-  }
+  .bubble-row { display: flex; margin: 3px 0; }
+  .bubble-row.mine { justify-content: flex-end; }
+  .bubble-row.theirs { justify-content: flex-start; }
 
-  .row { display: flex; gap: 8px; }
-
-  button {
-    font-family: inherit;
-    font-size: 0.85rem;
-    font-weight: 500;
-    border-radius: 8px;
-    border: 1px solid transparent;
+  .bubble {
+    max-width: 78%;
     padding: 8px 12px;
-    cursor: pointer;
-    background: var(--surface-2);
-    color: var(--ink);
+    border-radius: 16px;
+    font-size: 0.92rem;
+    line-height: 1.4;
+    display: flex; flex-direction: column; gap: 2px;
   }
-  button.primary { background: var(--me); color: var(--surface); border-color: var(--me); }
-  button:active { transform: translateY(1px); }
-  button:disabled { opacity: 0.5; cursor: default; }
+  .bubble-row.mine .bubble { background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
+  .bubble-row.theirs .bubble { background: var(--them-bubble); color: var(--ink); border-bottom-left-radius: 4px; }
 
-  input[type="text"] {
-    flex: 1;
-    background: var(--surface-2);
-    border: 1px solid var(--hairline);
-    border-radius: 8px;
-    padding: 8px 10px;
-    color: var(--ink);
-    font-size: 0.85rem;
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    min-width: 0;
+  .bubble-meta {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 0.65rem; align-self: flex-end;
+    opacity: 0.75;
   }
-  input[type="text"]:focus { outline: 2px solid var(--me); outline-offset: 1px; }
 
-  .contact-head {
+  /* ---------- Composer ---------- */
+
+  #composer {
+    flex: none;
+    background: var(--composer-bg);
+    border-top: 1px solid var(--hairline);
+    padding: 10px 12px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 8px;
   }
-  .contact-name { font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--them); flex: none; }
+  #composer input {
+    flex: 1;
+    border: none;
+    background: var(--surface-2);
+    border-radius: 22px;
+    padding: 11px 16px;
+    font-size: 0.92rem;
+    color: var(--ink);
+    font-family: inherit;
+  }
+  #composer input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #send-btn {
+    width: 40px; height: 40px; border-radius: 50%; flex: none;
+    background: var(--accent); color: var(--accent-ink);
+    border: none; display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  #send-btn:disabled { opacity: 0.4; }
+  #send-btn .icon { width: 18px; height: 18px; margin-left: 1px; }
 
-  .log {
+  /* ---------- Settings-Sheet ---------- */
+
+  #sheet-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(10, 12, 16, 0.4);
+    z-index: 10;
+  }
+  #settings-sheet {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    z-index: 11;
+    max-width: 480px;
+    margin: 0 auto;
+    background: var(--surface);
+    border-radius: 18px 18px 0 0;
+    box-shadow: var(--shadow);
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 14px 16px calc(20px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    max-height: 260px;
-    overflow-y: auto;
+    gap: 14px;
   }
-  .bubble {
-    max-width: 85%;
-    padding: 7px 10px;
-    border-radius: 10px;
-    font-size: 0.88rem;
-    line-height: 1.35;
+  .sheet-handle {
+    width: 36px; height: 4px; border-radius: 2px;
+    background: var(--hairline); margin: 0 auto;
   }
-  .bubble.mine { align-self: flex-end; background: var(--me-soft); border: 1px solid var(--me); }
-  .bubble.theirs { align-self: flex-start; background: var(--them-soft); border: 1px solid var(--them); }
-  .bubble.system { align-self: center; color: var(--ink-muted); font-size: 0.72rem; font-style: italic; }
-  .bubble.empty { color: var(--ink-muted); font-style: italic; font-size: 0.8rem; align-self: center; }
+  .sheet-head {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sheet-head h2 { font-size: 1rem; margin: 0; }
 
-  form.sendform { display: flex; gap: 8px; }
-
-  details.techlog {
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 14px;
-    padding: 12px 14px;
-  }
-  details.techlog summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+  details.techlog { border: 1px solid var(--hairline); border-radius: 12px; padding: 10px 12px; }
+  details.techlog summary { cursor: pointer; font-weight: 500; font-size: 0.85rem; }
+  .tests { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .tests .btn { font-size: 0.74rem; padding: 6px 10px; }
   .techlines {
     margin-top: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+    display: flex; flex-direction: column; gap: 3px;
     font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.68rem;
-    color: var(--ink-muted);
-    word-break: break-all;
-    max-height: 220px;
-    overflow-y: auto;
+    font-size: 0.66rem; color: var(--ink-muted);
+    word-break: break-all; max-height: 180px; overflow-y: auto;
   }
   .techlines .ok { color: var(--ok); }
   .techlines .fail { color: var(--danger); }
   .techlines .warn { color: var(--warn); }
 
-  .tests { display: flex; gap: 8px; flex-wrap: wrap; }
-  .tests button { font-size: 0.75rem; padding: 6px 9px; }
-
-  footer {
-    color: var(--ink-muted);
-    font-size: 0.72rem;
-    line-height: 1.5;
-    padding-top: 4px;
-    border-top: 1px solid var(--hairline);
+  .sheet-footer {
+    color: var(--ink-muted); font-size: 0.7rem; line-height: 1.55;
+    border-top: 1px solid var(--hairline); padding-top: 10px;
   }
+
+  [hidden] { display: none !important; }
 </style>
 
-<main>
+<div id="app">
   <header>
-    <h1>Cipher Wire</h1>
-    <p class="subtitle">
-      Echte Ende-zu-Ende-Verschlüsselung zwischen zwei getrennten Geräten:
-      NaCl <code>crypto_box</code>, pro Nachricht ein neues, signiertes
-      Ephemeral-Schlüsselpaar (Forward Secrecy) — Transport über ein
-      öffentliches MQTT-Test-Relay.
-    </p>
-    <div class="status-row">
-      <span class="status-dot" id="status-dot"></span>
-      <span id="status-text">Verbinde…</span>
+    <button class="icon-btn" id="back-btn" hidden aria-label="Zurück">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="avatar" id="header-avatar">CW</div>
+    <div class="header-text">
+      <div class="header-title" id="header-title">Cipher Wire</div>
+      <div class="header-sub">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="header-subtext">Verbinde…</span>
+      </div>
     </div>
+    <button class="icon-btn" id="settings-btn" aria-label="Einstellungen &amp; Verschlüsselungsdetails">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="15" cy="6" r="2.2" fill="var(--header)"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="9" cy="12" r="2.2" fill="var(--header)"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="17" cy="18" r="2.2" fill="var(--header)"/></svg>
+    </button>
   </header>
 
-  <section class="card">
-    <h2>Meine Identität</h2>
-    <div class="idbox" id="my-id">wird erzeugt…</div>
-    <div class="row">
-      <button id="copy-id" type="button">ID kopieren</button>
-      <button id="reset-id" type="button">Neue Identität</button>
+  <section id="onboarding">
+    <div class="lockmark">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+    </div>
+    <h1>Ende-zu-Ende verschlüsselt</h1>
+    <p class="lede">Jede Nachricht wird ausschließlich auf euren Geräten ver- und entschlüsselt. Ein Kontakt hinzufügen, um zu starten.</p>
+
+    <div class="field-card">
+      <div class="field-label">Deine ID</div>
+      <div class="idbox" id="my-id">wird erzeugt…</div>
+      <div class="btn-row">
+        <button class="btn full" id="copy-id" type="button">
+          <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          ID kopieren
+        </button>
+      </div>
+    </div>
+
+    <div class="field-card">
+      <div class="field-label">Kontakt hinzufügen</div>
+      <input type="text" class="textline" id="contact-input" placeholder="ID des anderen Geräts einfügen">
+      <button class="btn primary full" id="add-contact" type="button">Chat starten</button>
+      <p class="field-hint">ID persönlich oder außerhalb dieses Kanals austauschen — sonst ist eine Man-in-the-Middle-Zuordnung nicht ausgeschlossen.</p>
     </div>
   </section>
 
-  <section class="card" id="add-contact-card">
-    <h2>Kontakt hinzufügen</h2>
-    <p class="subtitle" style="margin:0;">
-      ID vom anderen Gerät hier einfügen (persönlich/außerhalb dieses Kanals
-      austauschen, sonst ist eine Man-in-the-Middle-Zuordnung nicht
-      ausgeschlossen — siehe Fallstrick Nr. 2 im Architektur-Dokument).
-    </p>
-    <div class="row">
-      <input type="text" id="contact-input" placeholder="boxPubHex.signPubHex">
-      <button id="add-contact" class="primary" type="button">Hinzufügen</button>
-    </div>
-  </section>
+  <main id="chat-area" hidden></main>
 
-  <section class="card" id="chat-card" hidden>
-    <div class="contact-head">
-      <div class="contact-name"><span class="dot"></span><span id="contact-label">Kontakt</span></div>
-      <button id="remove-contact" type="button">Entfernen</button>
+  <form id="composer" hidden>
+    <input type="text" id="send-input" placeholder="Nachricht" autocomplete="off">
+    <button type="submit" id="send-btn" aria-label="Senden">
+      <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M3 11.5 21 3l-6 18-4-7-8-2.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/></svg>
+    </button>
+  </form>
+</div>
+
+<div id="sheet-backdrop" hidden></div>
+<div id="settings-sheet" hidden>
+  <div class="sheet-handle"></div>
+  <div class="sheet-head">
+    <h2>Verschlüsselung &amp; Details</h2>
+    <button class="icon-btn" id="close-sheet" aria-label="Schließen">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button>
+  </div>
+
+  <div class="field-card">
+    <div class="field-label">Deine ID</div>
+    <div class="idbox" id="my-id-sheet"></div>
+    <div class="btn-row">
+      <button class="btn full" id="copy-id-sheet" type="button">ID kopieren</button>
     </div>
-    <div class="log" id="chat-log">
-      <div class="bubble empty">Noch keine Nachrichten.</div>
-    </div>
-    <form class="sendform" id="send-form">
-      <input type="text" id="send-input" placeholder="Nachricht…" style="font-family:inherit;" autocomplete="off">
-      <button type="submit" class="primary">Senden</button>
-    </form>
-  </section>
+  </div>
+
+  <div class="field-card" id="contact-card-sheet" hidden>
+    <div class="field-label">Aktueller Kontakt</div>
+    <div class="idbox" id="contact-id-sheet"></div>
+    <button class="btn danger full" id="remove-contact" type="button">
+      <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      Kontakt entfernen
+    </button>
+  </div>
 
   <details class="techlog">
     <summary>Technisches Log &amp; Gegenproben</summary>
-    <div class="tests" style="margin-top:10px;">
-      <button id="test-tamper" type="button">Manipulierten Ciphertext testen</button>
-      <button id="test-forged-eph" type="button">Gefälschte Ephemeral-Signatur testen</button>
-      <button id="test-clear" type="button">Log leeren</button>
+    <div class="tests">
+      <button class="btn" id="test-tamper" type="button">Manipulation testen</button>
+      <button class="btn" id="test-forged-eph" type="button">Fake-Signatur testen</button>
+      <button class="btn" id="test-clear" type="button">Log leeren</button>
     </div>
     <div class="techlines" id="techlines"></div>
   </details>
 
-  <footer>
+  <p class="sheet-footer">
     Jede Nachricht nutzt ein frisches, per Ed25519 signiertes Ephemeral-
     X25519-Schlüsselpaar (ähnlich X3DH) statt direkt den Langzeit-Key — ein
-    später gestohlener Langzeit-Private-Key entschlüsselt damit keine
-    bereits verschickten Nachrichten (Forward Secrecy gegen
-    Sender-Kompromittierung; volle Double-Ratchet-Sicherheit inkl.
-    Empfänger-Seite ist ein offener Punkt, siehe README Fallstrick Nr. 1).
-    Transport läuft über den öffentlichen Test-Broker
-    <code>test.mosquitto.org</code> als Platzhalter für den echten
-    "blinden" Relay-Server (<code>backend/src/main.rs</code>) — Inhalte
-    bleiben E2EE-verschlüsselt, aber Topic-Namen/Zeitpunkte sind auf diesem
-    öffentlichen Broker für Dritte einsehbar. Identitäts-Keys liegen zum
-    Testen im <code>localStorage</code> dieses Browsers (Klartext, keine
-    Keychain/Keystore-Absicherung) — siehe die nativen Referenzdateien für
-    die gehärtete Variante.
-  </footer>
-</main>
+    später gestohlener Langzeit-Key entschlüsselt damit keine bereits
+    verschickten Nachrichten (Forward Secrecy gegen
+    Sender-Kompromittierung; volle Double-Ratchet-Sicherheit ist ein
+    offener Punkt, siehe README Fallstrick Nr. 1). Transport läuft über den
+    öffentlichen Test-Broker <code>test.mosquitto.org</code> als
+    Platzhalter für den echten "blinden" Relay-Server
+    (<code>backend/src/main.rs</code>) — Inhalte bleiben E2EE-verschlüsselt,
+    aber Topic-Namen/Zeitpunkte sind auf diesem öffentlichen Broker für
+    Dritte einsehbar. Identitäts-Keys liegen zum Testen im
+    <code>localStorage</code> dieses Browsers (Klartext) — siehe die
+    nativen Referenzdateien für die gehärtete Keychain/Keystore-Variante.
+  </p>
+</div>
 
 <script>
 (function () {
@@ -338,6 +459,10 @@
   function shortHex(bytes, n) { return toHex(bytes.slice(0, n || 6)) + "…"; }
   function utf8Encode(str) { return new TextEncoder().encode(str); }
   function utf8Decode(bytes) { return new TextDecoder().decode(bytes); }
+  function formatTime(ts) {
+    var d = new Date(ts);
+    return d.getHours().toString().padStart(2, "0") + ":" + d.getMinutes().toString().padStart(2, "0");
+  }
 
   var techlines = document.getElementById("techlines");
   function logLine(text, cls) {
@@ -349,9 +474,8 @@
   }
 
   function setStatus(state, text) {
-    var dot = document.getElementById("status-dot");
-    dot.className = "status-dot " + state;
-    document.getElementById("status-text").textContent = text;
+    document.getElementById("status-dot").className = "status-dot " + state;
+    document.getElementById("header-subtext").textContent = text;
   }
 
   function safeLocalStorage() {
@@ -367,7 +491,11 @@
   function storageSet(key, val) { try { if (storage) storage.setItem(key, val); } catch (e) {} }
   function storageRemove(key) { try { if (storage) storage.removeItem(key); } catch (e) {} }
 
-  // ---------- Identität (Langzeit-Schlüssel: Box für Verschlüsselung, Sign für Authentizität) ----------
+  function copyText(text) {
+    navigator.clipboard.writeText(text).catch(function () {});
+  }
+
+  // ---------- Identität ----------
 
   function generateIdentity() {
     var box = nacl.box.keyPair();
@@ -377,9 +505,7 @@
       signPub: sign.publicKey, signSec: sign.secretKey
     };
   }
-  function serializeIdentity(id) {
-    return toHex(id.boxSec) + "." + toHex(id.signSec);
-  }
+  function serializeIdentity(id) { return toHex(id.boxSec) + "." + toHex(id.signSec); }
   function deserializeIdentity(s) {
     var parts = s.split(".");
     var boxSec = fromHex(parts[0]);
@@ -399,7 +525,7 @@
   var me = (function () {
     var stored = storageGet("cipherwire_identity");
     if (stored) {
-      try { return deserializeIdentity(stored); } catch (e) { /* fällt durch zu Neuerzeugung */ }
+      try { return deserializeIdentity(stored); } catch (e) {}
     }
     var fresh = generateIdentity();
     storageSet("cipherwire_identity", serializeIdentity(fresh));
@@ -407,24 +533,12 @@
   })();
 
   document.getElementById("my-id").textContent = idString(me);
-
-  document.getElementById("copy-id").addEventListener("click", function () {
-    var text = idString(me);
-    navigator.clipboard.writeText(text).catch(function () {
-      var sel = window.getSelection(), range = document.createRange();
-      range.selectNodeContents(document.getElementById("my-id"));
-      sel.removeAllRanges(); sel.addRange(range);
-    });
+  document.getElementById("my-id-sheet").textContent = idString(me);
+  ["copy-id", "copy-id-sheet"].forEach(function (id) {
+    document.getElementById(id).addEventListener("click", function () { copyText(idString(me)); });
   });
 
-  document.getElementById("reset-id").addEventListener("click", function () {
-    storageRemove("cipherwire_identity");
-    storageRemove("cipherwire_contact");
-    storageRemove("cipherwire_history");
-    location.reload();
-  });
-
-  // ---------- Kontakt ----------
+  // ---------- Kontakt & Verlauf ----------
 
   var contact = null;
   var history = [];
@@ -441,35 +555,58 @@
 
   function saveHistory() { storageSet("cipherwire_history", JSON.stringify(history)); }
 
-  function showChatUI() {
-    document.getElementById("add-contact-card").hidden = !!contact;
-    document.getElementById("chat-card").hidden = !contact;
-    if (contact) {
-      document.getElementById("contact-label").textContent = shortHex(contact.boxPub, 6);
-      renderHistory();
+  function refreshUI() {
+    var hasContact = !!contact;
+    document.getElementById("onboarding").hidden = hasContact;
+    document.getElementById("chat-area").hidden = !hasContact;
+    document.getElementById("composer").hidden = !hasContact;
+    document.getElementById("back-btn").hidden = !hasContact;
+    document.getElementById("contact-card-sheet").hidden = !hasContact;
+
+    if (hasContact) {
+      var fp = shortHex(contact.boxPub, 3);
+      document.getElementById("header-avatar").textContent = toHex(contact.boxPub).slice(0, 2).toUpperCase();
+      document.getElementById("header-title").textContent = fp;
+      document.getElementById("contact-id-sheet").textContent = toHex(contact.boxPub) + "." + toHex(contact.signPub);
+      renderMessages();
+    } else {
+      document.getElementById("header-avatar").textContent = "CW";
+      document.getElementById("header-title").textContent = "Cipher Wire";
     }
   }
 
-  function renderHistory() {
-    var log = document.getElementById("chat-log");
-    log.innerHTML = "";
+  function renderMessages() {
+    var area = document.getElementById("chat-area");
+    area.innerHTML = "";
     if (history.length === 0) {
-      log.innerHTML = '<div class="bubble empty">Noch keine Nachrichten.</div>';
+      var empty = document.createElement("div");
+      empty.className = "day-empty";
+      empty.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Verschlüsselte Unterhaltung beginnt hier.</span>';
+      area.appendChild(empty);
       return;
     }
     history.forEach(function (m) {
-      var div = document.createElement("div");
-      div.className = "bubble " + (m.mine ? "mine" : "theirs");
-      div.textContent = m.text;
-      log.appendChild(div);
+      var row = document.createElement("div");
+      row.className = "bubble-row " + (m.mine ? "mine" : "theirs");
+      var bubble = document.createElement("div");
+      bubble.className = "bubble";
+      var text = document.createElement("div");
+      text.textContent = m.text;
+      var meta = document.createElement("div");
+      meta.className = "bubble-meta";
+      meta.innerHTML = '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>' + formatTime(m.t) + '</span>';
+      bubble.appendChild(text);
+      bubble.appendChild(meta);
+      row.appendChild(bubble);
+      area.appendChild(row);
     });
-    log.scrollTop = log.scrollHeight;
+    area.scrollTop = area.scrollHeight;
   }
 
   function appendMessage(text, mine) {
     history.push({ text: text, mine: mine, t: Date.now() });
     saveHistory();
-    renderHistory();
+    renderMessages();
   }
 
   document.getElementById("add-contact").addEventListener("click", function () {
@@ -484,7 +621,12 @@
     history = [];
     saveHistory();
     subscribeInbox();
-    showChatUI();
+    refreshUI();
+  });
+
+  document.getElementById("back-btn").addEventListener("click", function () {
+    contact = null;
+    refreshUI();
   });
 
   document.getElementById("remove-contact").addEventListener("click", function () {
@@ -492,8 +634,23 @@
     history = [];
     storageRemove("cipherwire_contact");
     storageRemove("cipherwire_history");
-    showChatUI();
+    closeSheet();
+    refreshUI();
   });
+
+  // ---------- Settings-Sheet ----------
+
+  function openSheet() {
+    document.getElementById("settings-sheet").hidden = false;
+    document.getElementById("sheet-backdrop").hidden = false;
+  }
+  function closeSheet() {
+    document.getElementById("settings-sheet").hidden = true;
+    document.getElementById("sheet-backdrop").hidden = true;
+  }
+  document.getElementById("settings-btn").addEventListener("click", openSheet);
+  document.getElementById("close-sheet").addEventListener("click", closeSheet);
+  document.getElementById("sheet-backdrop").addEventListener("click", closeSheet);
 
   // ---------- Kryptografie: signiertes Ephemeral crypto_box (Forward Secrecy) ----------
   //
@@ -510,10 +667,6 @@
     var ephSig = nacl.sign.detached(eph.publicKey, me.signSec);
     var nonce = nacl.randomBytes(24);
     var ciphertext = nacl.box(utf8Encode(plaintext), nonce, recipientBoxPub, eph.secretKey);
-    // eph.secretKey verlässt diese Funktion nicht und wird hier nicht
-    // weiter referenziert -- der einzige Verweis darauf verschwindet mit
-    // Ende dieses Funktionsaufrufs (best effort in JS ohne manuelles
-    // Speicher-Zeroing, siehe README Fallstrick Nr. 7).
     return {
       senderBoxPub: toHex(me.boxPub),
       senderSignPub: toHex(me.signPub),
@@ -545,14 +698,14 @@
   function topicFor(boxPubHex) { return TOPIC_PREFIX + boxPubHex; }
 
   function connectTransport() {
-    setStatus("warn", "Verbinde mit Relay…");
+    setStatus("warn", "Verbinde…");
     mqttClient = mqtt.connect("wss://test.mosquitto.org:8081/mqtt", {
       clientId: "cipherwire-" + Math.random().toString(16).slice(2),
       reconnectPeriod: 4000
     });
 
     mqttClient.on("connect", function () {
-      setStatus("live", "Verbunden (öffentliches Test-Relay)");
+      setStatus("live", "Verschlüsselt verbunden");
       logLine("✓ Transport verbunden", "ok");
       subscribeInbox();
     });
@@ -590,7 +743,7 @@
 
   // ---------- Senden ----------
 
-  document.getElementById("send-form").addEventListener("submit", function (ev) {
+  document.getElementById("composer").addEventListener("submit", function (ev) {
     ev.preventDefault();
     if (!contact) return;
     var input = document.getElementById("send-input");
@@ -609,7 +762,7 @@
     }
   });
 
-  showChatUI();
+  refreshUI();
 
   // ---------- Gegenproben ----------
 
@@ -629,16 +782,13 @@
   });
 
   document.getElementById("test-forged-eph").addEventListener("click", function () {
-    // Simuliert einen Angreifer, der einen eigenen Ephemeral-Key einschleust,
-    // ohne die passende Signatur des echten Langzeit-Signaturschlüssels zu
-    // besitzen -- genau das verhindert die Ephemeral-Signaturprüfung.
     var attacker = generateIdentity();
     var forgedEph = nacl.box.keyPair();
-    var forgedSig = nacl.sign.detached(forgedEph.publicKey, attacker.signSec); // falscher Signaturschlüssel
+    var forgedSig = nacl.sign.detached(forgedEph.publicKey, attacker.signSec);
     var nonce = nacl.randomBytes(24);
     var ciphertext = nacl.box(utf8Encode("gefälscht"), nonce, me.boxPub, forgedEph.secretKey);
     var forgedEnvelope = {
-      senderBoxPub: toHex(me.boxPub), senderSignPub: toHex(me.signPub), // gibt vor, "ich" zu sein
+      senderBoxPub: toHex(me.boxPub), senderSignPub: toHex(me.signPub),
       ephPub: toHex(forgedEph.publicKey), ephSig: toHex(forgedSig),
       nonce: toHex(nonce), ciphertext: toHex(ciphertext)
     };
