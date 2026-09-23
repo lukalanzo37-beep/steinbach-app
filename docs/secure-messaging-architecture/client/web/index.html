@@ -1,0 +1,489 @@
+<title>Cipher Wire</title>
+<meta name="description" content="Zwei-Personen E2EE-Chat-Demo im Browser: echte NaCl crypto_box-Verschlüsselung, live einsehbar, kein Server, kein Install.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
+
+<style>
+  :root {
+    --bg: #eef1f5;
+    --surface: #ffffff;
+    --surface-2: #e3e8ee;
+    --ink: #1a2030;
+    --ink-muted: #5b6472;
+    --hairline: #c7cfda;
+    --alice: #1f6f61;
+    --alice-soft: #e1f0ec;
+    --bob: #9a5327;
+    --bob-soft: #f5e8dc;
+    --wire: #94a2b5;
+    --danger: #a3341f;
+    --danger-soft: #f7e3de;
+    --ok: #1f6f61;
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12161f;
+      --surface: #1a2030;
+      --surface-2: #232a3c;
+      --ink: #e9ecf2;
+      --ink-muted: #97a1b3;
+      --hairline: #333c52;
+      --alice: #5fd0b8;
+      --alice-soft: #1c332f;
+      --bob: #e2985f;
+      --bob-soft: #3a2a1c;
+      --wire: #4a5670;
+      --danger: #e37a63;
+      --danger-soft: #3a2320;
+      --ok: #5fd0b8;
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #12161f;
+    --surface: #1a2030;
+    --surface-2: #232a3c;
+    --ink: #e9ecf2;
+    --ink-muted: #97a1b3;
+    --hairline: #333c52;
+    --alice: #5fd0b8;
+    --alice-soft: #1c332f;
+    --bob: #e2985f;
+    --bob-soft: #3a2a1c;
+    --wire: #4a5670;
+    --danger: #e37a63;
+    --danger-soft: #3a2320;
+    --ok: #5fd0b8;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    padding-inline: 16px;
+    padding-block: 20px;
+    display: flex;
+    justify-content: center;
+  }
+
+  main {
+    width: 100%;
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  h1 {
+    font-family: "IBM Plex Serif", Georgia, serif;
+    font-weight: 600;
+    font-size: 1.5rem;
+    letter-spacing: -0.01em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .subtitle {
+    color: var(--ink-muted);
+    font-size: 0.85rem;
+    line-height: 1.4;
+    margin: 4px 0 0;
+  }
+
+  header {
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .home-hint {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    color: var(--ink-muted);
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .home-hint strong { color: var(--ink); font-weight: 600; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .who {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .dot.alice { background: var(--alice); }
+  .dot.bob { background: var(--bob); }
+
+  .fingerprint {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.68rem;
+    color: var(--ink-muted);
+  }
+
+  .wire-track {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 4px;
+    min-height: 20px;
+  }
+  .wire-line {
+    flex: 1;
+    height: 1px;
+    background: var(--wire);
+    position: relative;
+    overflow: visible;
+  }
+  .packet {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translate(-50%, -50%);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.62rem;
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    padding: 2px 6px;
+    white-space: nowrap;
+    opacity: 0;
+  }
+  .packet.run {
+    animation: travel 1.1s ease-in-out;
+  }
+  .packet.run-rev {
+    animation: travel-rev 1.1s ease-in-out;
+  }
+  @keyframes travel {
+    0% { left: 0%; opacity: 0; }
+    12% { opacity: 1; }
+    88% { opacity: 1; }
+    100% { left: 100%; opacity: 0; }
+  }
+  @keyframes travel-rev {
+    0% { left: 100%; opacity: 0; }
+    12% { opacity: 1; }
+    88% { opacity: 1; }
+    100% { left: 0%; opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .packet.run, .packet.run-rev { animation: none; opacity: 1; }
+  }
+
+  .log {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .bubble {
+    max-width: 85%;
+    padding: 7px 10px;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    line-height: 1.35;
+  }
+  .bubble.mine.alice { align-self: flex-end; background: var(--alice-soft); border: 1px solid var(--alice); }
+  .bubble.mine.bob { align-self: flex-end; background: var(--bob-soft); border: 1px solid var(--bob); }
+  .bubble.theirs { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--hairline); }
+  .bubble.empty { color: var(--ink-muted); font-style: italic; font-size: 0.8rem; }
+
+  form { display: flex; gap: 8px; }
+  input[type="text"] {
+    flex: 1;
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    padding: 8px 10px;
+    color: var(--ink);
+    font-size: 0.9rem;
+    font-family: inherit;
+    min-width: 0;
+  }
+  input[type="text"]:focus { outline: 2px solid var(--alice); outline-offset: 1px; }
+
+  button {
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+  .send.alice { background: var(--alice); color: var(--surface); }
+  .send.bob { background: var(--bob); color: var(--surface); }
+  .send:active { transform: translateY(1px); }
+
+  details.techlog {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+  details.techlog summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .techlines {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.7rem;
+    color: var(--ink-muted);
+    word-break: break-all;
+  }
+  .techlines .ok { color: var(--ok); }
+  .techlines .fail { color: var(--danger); }
+
+  .tests {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .tests button {
+    background: var(--surface-2);
+    color: var(--ink);
+    border: 1px solid var(--hairline);
+    font-size: 0.75rem;
+    padding: 6px 9px;
+  }
+
+  footer {
+    color: var(--ink-muted);
+    font-size: 0.72rem;
+    line-height: 1.5;
+    padding-top: 4px;
+    border-top: 1px solid var(--hairline);
+  }
+  footer a { color: inherit; }
+</style>
+
+<main>
+  <header>
+    <h1>Cipher Wire</h1>
+    <p class="subtitle">
+      Zwei lokale Identitäten, echte Ende-zu-Ende-Verschlüsselung
+      (NaCl <code>crypto_box</code>, X25519 + XSalsa20-Poly1305) — läuft
+      komplett hier im Browser, kein Server beteiligt.
+    </p>
+  </header>
+
+  <div class="home-hint">
+    <span>⇪</span>
+    <span><strong>Zum Home-Bildschirm:</strong> Safari-Teilen-Symbol → "Zum Home-Bildschirm" — dann startet die Demo wie eine App, ganz ohne Installation.</span>
+  </div>
+
+  <section class="panel" id="panel-alice">
+    <div class="panel-head">
+      <div class="who"><span class="dot alice"></span>Alice</div>
+      <div class="fingerprint" id="fp-alice">Schlüssel wird erzeugt…</div>
+    </div>
+    <div class="log" id="log-alice">
+      <div class="bubble empty">Noch keine Nachrichten.</div>
+    </div>
+    <form id="form-alice">
+      <input type="text" id="input-alice" placeholder="Nachricht an Bob…" autocomplete="off">
+      <button type="submit" class="send alice">Senden</button>
+    </form>
+  </section>
+
+  <div class="wire-track">
+    <div class="wire-line" id="wire">
+      <div class="packet" id="packet"></div>
+    </div>
+  </div>
+
+  <section class="panel" id="panel-bob">
+    <div class="panel-head">
+      <div class="who"><span class="dot bob"></span>Bob</div>
+      <div class="fingerprint" id="fp-bob">Schlüssel wird erzeugt…</div>
+    </div>
+    <div class="log" id="log-bob">
+      <div class="bubble empty">Noch keine Nachrichten.</div>
+    </div>
+    <form id="form-bob">
+      <input type="text" id="input-bob" placeholder="Nachricht an Alice…" autocomplete="off">
+      <button type="submit" class="send bob">Senden</button>
+    </form>
+  </section>
+
+  <details class="techlog">
+    <summary>Technisches Log &amp; Gegenproben</summary>
+    <div class="tests" style="margin-top:10px;">
+      <button id="test-tamper" type="button">Manipulierten Ciphertext testen</button>
+      <button id="test-wrongsender" type="button">Falschen Absender testen</button>
+      <button id="test-clear" type="button">Log leeren</button>
+    </div>
+    <div class="techlines" id="techlines"></div>
+  </details>
+
+  <footer>
+    Referenz-Implementierung derselben Verschlüsselung wie
+    <code>client/ios/E2EECryptoManager.swift</code> und
+    <code>client/android/E2EECryptoManager.kt</code> in diesem Repo —
+    hier als TweetNaCl.js im Browser statt nativ. Schlüssel existieren nur
+    im Arbeitsspeicher dieses Tabs und sind weg, sobald du die Seite
+    schließt.
+  </footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  function toHex(bytes) {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  function shortHex(bytes, n) {
+    return toHex(bytes.slice(0, n || 6)) + "…";
+  }
+  function utf8Encode(str) { return new TextEncoder().encode(str); }
+  function utf8Decode(bytes) { return new TextDecoder().decode(bytes); }
+
+  var alice = nacl.box.keyPair();
+  var bob = nacl.box.keyPair();
+
+  document.getElementById("fp-alice").textContent = shortHex(alice.publicKey, 8);
+  document.getElementById("fp-bob").textContent = shortHex(bob.publicKey, 8);
+
+  var techlines = document.getElementById("techlines");
+  function logLine(text, cls) {
+    var div = document.createElement("div");
+    if (cls) div.className = cls;
+    div.textContent = text;
+    techlines.appendChild(div);
+    techlines.scrollTop = techlines.scrollHeight;
+  }
+
+  function appendBubble(logId, text, mineClass, isMine) {
+    var log = document.getElementById(logId);
+    var empty = log.querySelector(".bubble.empty");
+    if (empty) empty.remove();
+    var div = document.createElement("div");
+    div.className = "bubble " + (isMine ? "mine " + mineClass : "theirs");
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function runPacketAnimation(reverse, label, done) {
+    var packet = document.getElementById("packet");
+    packet.textContent = label;
+    packet.className = "packet " + (reverse ? "run-rev" : "run");
+    void packet.offsetWidth; // Reflow erzwingen, damit die Animation neu startet
+    setTimeout(function () {
+      packet.className = "packet";
+      if (done) done();
+    }, 1100);
+  }
+
+  // Entspricht encryptMessage()/decryptMessage() in den nativen
+  // E2EECryptoManager-Dateien: crypto_box_easy / crypto_box_open_easy.
+  function encrypt(plaintext, recipientPublicKey, senderSecretKey) {
+    var nonce = nacl.randomBytes(24);
+    var messageBytes = utf8Encode(plaintext);
+    var ciphertext = nacl.box(messageBytes, nonce, recipientPublicKey, senderSecretKey);
+    return { ciphertext: ciphertext, nonce: nonce };
+  }
+  function decrypt(envelope, senderPublicKey, recipientSecretKey) {
+    var opened = nacl.box.open(envelope.ciphertext, envelope.nonce, senderPublicKey, recipientSecretKey);
+    if (!opened) throw new Error("Entschlüsselung fehlgeschlagen");
+    return utf8Decode(opened);
+  }
+
+  function wireUp(formId, inputId, fromLogId, toLogId, fromClass, fromKeys, toKeys, reverse) {
+    document.getElementById(formId).addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var input = document.getElementById(inputId);
+      var text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+
+      appendBubble(fromLogId, text, fromClass, true);
+
+      var envelope = encrypt(text, toKeys.publicKey, fromKeys.secretKey);
+      logLine("→ verschlüsselt (" + fromClass + "): " + shortHex(envelope.ciphertext, 10));
+
+      runPacketAnimation(reverse, shortHex(envelope.ciphertext, 5), function () {
+        try {
+          var plain = decrypt(envelope, fromKeys.publicKey, toKeys.secretKey);
+          appendBubble(toLogId, plain, fromClass, false);
+          logLine("✓ entschlüsselt & verifiziert beim Empfänger", "ok");
+        } catch (e) {
+          logLine("✗ " + e.message, "fail");
+        }
+      });
+    });
+  }
+
+  wireUp("form-alice", "input-alice", "log-alice", "log-bob", "alice", alice, bob, false);
+  wireUp("form-bob", "input-bob", "log-bob", "log-alice", "bob", bob, alice, true);
+
+  document.getElementById("test-tamper").addEventListener("click", function () {
+    var env = encrypt("Testnachricht für Manipulationsprobe", bob.publicKey, alice.secretKey);
+    var tampered = new Uint8Array(env.ciphertext);
+    tampered[0] ^= 0xff;
+    logLine("Gegenprobe: 1 Bit im Ciphertext verändert …");
+    try {
+      decrypt({ ciphertext: tampered, nonce: env.nonce }, alice.publicKey, bob.secretKey);
+      logLine("✗ Fehler: Manipulation hätte erkannt werden müssen!", "fail");
+    } catch (e) {
+      logLine("✓ korrekt abgelehnt: " + e.message, "ok");
+    }
+  });
+
+  document.getElementById("test-wrongsender").addEventListener("click", function () {
+    var mallory = nacl.box.keyPair();
+    var env = encrypt("Testnachricht für Absenderprobe", bob.publicKey, alice.secretKey);
+    logLine("Gegenprobe: Entschlüsselung mit falschem Absender-Public-Key …");
+    try {
+      decrypt(env, mallory.publicKey, bob.secretKey);
+      logLine("✗ Fehler: falscher Absender hätte erkannt werden müssen!", "fail");
+    } catch (e) {
+      logLine("✓ korrekt abgelehnt: " + e.message, "ok");
+    }
+  });
+
+  document.getElementById("test-clear").addEventListener("click", function () {
+    techlines.innerHTML = "";
+  });
+
+  logLine("Alice Public Key: " + toHex(alice.publicKey));
+  logLine("Bob   Public Key: " + toHex(bob.publicKey));
+})();
+</script>
