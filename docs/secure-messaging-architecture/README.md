@@ -53,6 +53,10 @@ Fehlermeldung kopieren und zurückmelden — die Projekte wurden ohne Zugriff
 auf Xcode/Android SDK erstellt und konnten daher nicht selbst kompiliert
 werden.
 
+**Kein Mac vorhanden?** Für die iOS-Demo gibt es einen Weg komplett ohne
+eigenen Mac (GitHub-Actions-Cloud-Build + AltStore/SideStore-Sideloading):
+siehe `client/ios/SIDELOAD-OHNE-MAC.md`.
+
 ---
 
 ## 1. Kryptografisches Grundprinzip

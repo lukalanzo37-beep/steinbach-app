@@ -1,0 +1,76 @@
+name: iOS Demo Build (unsigned)
+
+# Baut die SecureMessengerDemo.swiftpm-App auf einem kostenlosen
+# GitHub-gehosteten macOS-Runner, OHNE Code-Signierung. Das Ergebnis ist
+# eine unsignierte .ipa-Datei als Workflow-Artefakt -- die eigentliche
+# Signierung/Installation aufs iPhone übernimmt anschließend AltStore/
+# SideStore (mit deiner eigenen, kostenlosen Apple-ID), siehe
+# docs/secure-messaging-architecture/client/ios/SIDELOAD-OHNE-MAC.md
+#
+# Bewusst KEINE Apple-ID/Zertifikate in GitHub Secrets nötig.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/secure-messaging-app-architecture-tsy5a3
+    paths:
+      - "docs/secure-messaging-architecture/client/ios/SecureMessengerDemo.swiftpm/**"
+      - ".github/workflows/ios-demo-build.yml"
+
+jobs:
+  build-unsigned-ipa:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: docs/secure-messaging-architecture/client/ios/SecureMessengerDemo.swiftpm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode-Version anzeigen
+        run: xcodebuild -version
+
+      - name: Verfügbare Schemes anzeigen (Debug-Hilfe für Log-Auswertung)
+        run: xcodebuild -list || true
+
+      - name: Unsigniertes .app für echtes iPhone bauen
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -scheme SecureMessengerDemo \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            | tee xcodebuild.log
+
+      - name: .app zu unsignierter .ipa packen
+        run: |
+          set -e
+          APP_PATH=$(find build/Build/Products -maxdepth 2 -name "*.app" -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "Kein .app-Bundle gefunden -- siehe xcodebuild.log"
+            exit 1
+          fi
+          echo "Gefundenes App-Bundle: $APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r SecureMessengerDemo-unsigned.ipa Payload
+
+      - name: xcodebuild-Log als Artefakt sichern (auch bei Erfolg, für Nachvollziehbarkeit)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: docs/secure-messaging-architecture/client/ios/SecureMessengerDemo.swiftpm/xcodebuild.log
+          if-no-files-found: ignore
+
+      - name: Unsignierte .ipa als Artefakt hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecureMessengerDemo-unsigned-ipa
+          path: docs/secure-messaging-architecture/client/ios/SecureMessengerDemo.swiftpm/SecureMessengerDemo-unsigned.ipa
