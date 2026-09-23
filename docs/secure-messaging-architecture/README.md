@@ -16,9 +16,42 @@ docs/secure-messaging-architecture/
 ├── client/android/SecureKeyStorage.kt        # Android Keystore Key-Wrapping
 ├── backend/src/main.rs                       # "Blinder" Relay-Server (Rust/axum, Skizze)
 ├── backend/Cargo.toml                        # Abhängigkeiten für den Server-Sketch
+├── client/ios/SecureMessengerDemo.swiftpm/   # Lauffähige iOS-Demo-App (SwiftUI + Swift-Sodium)
+├── client/android/SecureMessengerDemo/       # Lauffähige Android-Demo-App (Compose + LazySodium)
 ├── db/schema.sql                             # Lokales SQLite/Room-Schema
 └── db/android/SecureMessengerDatabase.kt     # Room + SQLCipher Integration
 ```
+
+## Demo-Apps lokal öffnen
+
+Die beiden `SecureMessengerDemo`-Ordner sind echte, öffenbare Projekte, die
+dieselbe NaCl-`crypto_box`-Verschlüsselung wie oben beschrieben ausführen
+(Alice verschlüsselt, Bob entschlüsselt, plus zwei Gegenproben: manipulierte
+Nachricht und falscher Absender werden korrekt abgelehnt). Aus
+Zuverlässigkeitsgründen halten die Demo-Apps Schlüssel bewusst nur im
+Arbeitsspeicher statt in Keychain/Keystore — die produktionsnahe Variante
+mit Keychain/Keystore bleibt in den oben gelisteten Referenzdateien.
+
+**iOS** (braucht einen Mac mit Xcode 15+):
+1. In Xcode: *File → Open…* und den Ordner
+   `client/ios/SecureMessengerDemo.swiftpm` auswählen.
+2. Warten, bis Xcode die Paketabhängigkeit `swift-sodium` aufgelöst hat.
+3. Einen iOS-Simulator auswählen und mit ⌘R starten.
+4. In der App auf "Demo starten" tippen.
+
+**Android** (braucht Android Studio):
+1. In Android Studio: *File → Open…* und den Ordner
+   `client/android/SecureMessengerDemo` auswählen.
+2. Den Gradle-Sync abwarten (lädt u. a. LazySodium/JNA herunter). Falls
+   Android Studio wegen des fehlenden `gradle-wrapper.jar` nachfragt, die
+   Wrapper-Vervollständigung/das gebündelte Gradle akzeptieren.
+3. Einen Emulator oder ein Gerät auswählen und ▶ Run drücken.
+4. In der App auf "Demo starten" tippen.
+
+Falls beim ersten Build in Xcode oder Android Studio ein Fehler auftritt:
+Fehlermeldung kopieren und zurückmelden — die Projekte wurden ohne Zugriff
+auf Xcode/Android SDK erstellt und konnten daher nicht selbst kompiliert
+werden.
 
 ---
 
