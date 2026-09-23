@@ -1,5 +1,5 @@
-<title>Cipher Wire</title>
-<meta name="description" content="Ende-zu-Ende-verschlüsselter Chat zwischen zwei Geräten: NaCl crypto_box mit Forward Secrecy pro Nachricht, nichts unverschlüsselt nachverfolgbar.">
+<title>Secure Messenger Secret</title>
+<meta name="description" content="Ende-zu-Ende-verschlüsselter Messenger: NaCl crypto_box mit Forward Secrecy pro Nachricht, signierte Zustell-/Lesebestätigungen, nichts unverschlüsselt nachverfolgbar.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl.min.js"></script>
@@ -14,6 +14,7 @@
     --composer-bg: #ffffff;
     --ink: #12151b;
     --ink-muted: #667085;
+    --ink-faint: #99a1b0;
     --hairline: #e3e6ec;
     --accent: #1c8f76;
     --accent-ink: #ffffff;
@@ -22,7 +23,11 @@
     --danger: #c4402c;
     --ok: #1c8f76;
     --warn: #a36c10;
+    --avatar-s: 46%;
+    --avatar-l: 42%;
+    --avatar-text-l: 97%;
     --shadow: 0 1px 2px rgba(20, 24, 33, 0.06), 0 8px 24px rgba(20, 24, 33, 0.05);
+    --shadow-fab: 0 6px 16px rgba(28, 143, 118, 0.35);
     color-scheme: light;
   }
 
@@ -35,6 +40,7 @@
       --composer-bg: #14181f;
       --ink: #eef0f3;
       --ink-muted: #8b93a3;
+      --ink-faint: #5b6272;
       --hairline: #262b35;
       --accent: #4fd6b8;
       --accent-ink: #05201a;
@@ -43,7 +49,11 @@
       --danger: #ef8672;
       --ok: #4fd6b8;
       --warn: #e3b256;
+      --avatar-s: 38%;
+      --avatar-l: 56%;
+      --avatar-text-l: 10%;
       --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+      --shadow-fab: 0 6px 18px rgba(79, 214, 184, 0.25);
       color-scheme: dark;
     }
   }
@@ -56,6 +66,7 @@
     --composer-bg: #14181f;
     --ink: #eef0f3;
     --ink-muted: #8b93a3;
+    --ink-faint: #5b6272;
     --hairline: #262b35;
     --accent: #4fd6b8;
     --accent-ink: #05201a;
@@ -64,12 +75,17 @@
     --danger: #ef8672;
     --ok: #4fd6b8;
     --warn: #e3b256;
+    --avatar-s: 38%;
+    --avatar-l: 56%;
+    --avatar-text-l: 10%;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-fab: 0 6px 18px rgba(79, 214, 184, 0.25);
     color-scheme: dark;
   }
 
   * { box-sizing: border-box; }
   html, body { height: 100%; }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
 
   body {
     background: var(--bg);
@@ -86,6 +102,7 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    position: relative;
   }
 
   .icon { width: 18px; height: 18px; flex: none; display: block; }
@@ -103,25 +120,37 @@
     gap: 10px;
   }
 
+  .brandmark {
+    width: 34px; height: 34px; border-radius: 10px; flex: none;
+    background: var(--accent-soft); color: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brandmark .icon { width: 19px; height: 19px; }
+
   .avatar {
-    width: 36px; height: 36px; border-radius: 50%;
-    background: var(--accent-soft);
-    color: var(--accent);
+    width: 38px; height: 38px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-family: "IBM Plex Mono", monospace;
-    font-weight: 500; font-size: 0.72rem;
+    font-weight: 600; font-size: 0.74rem;
     flex: none;
+    color: hsl(var(--h) var(--avatar-s) var(--avatar-text-l));
+    background: hsl(var(--h) var(--avatar-s) var(--avatar-l));
   }
+  .avatar.sm { width: 30px; height: 30px; font-size: 0.62rem; }
 
   .header-text { min-width: 0; flex: 1; }
   .header-title {
     font-weight: 600; font-size: 0.98rem;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: default;
   }
+  .header-title.tappable { cursor: pointer; }
   .header-sub {
     display: flex; align-items: center; gap: 4px;
     font-size: 0.72rem; color: var(--ink-muted);
+    min-height: 15px;
   }
+  .header-sub.typing { color: var(--accent); font-weight: 500; }
   .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-muted); flex: none; }
   .status-dot.live { background: var(--ok); }
   .status-dot.warn { background: var(--warn); }
@@ -135,100 +164,67 @@
   }
   .icon-btn:active { background: var(--surface-2); }
 
-  /* ---------- Onboarding (kein Kontakt) ---------- */
+  /* ---------- Views (Liste / Chat) ---------- */
 
-  #onboarding {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 18px;
-    padding: 24px 20px 32px;
+  #view-list, #view-chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  #view-chat.entering { animation: fadeUp 0.18s ease-out; }
+
+  /* Chat-Liste */
+
+  #contact-list { flex: 1; overflow-y: auto; }
+  .contact-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--hairline);
+    cursor: pointer;
+  }
+  .contact-row:active { background: var(--surface-2); }
+  .contact-row-text { min-width: 0; flex: 1; }
+  .contact-row-top { display: flex; justify-content: space-between; gap: 8px; }
+  .contact-row-name { font-weight: 600; font-size: 0.92rem; }
+  .contact-row-time { font-size: 0.7rem; color: var(--ink-faint); flex: none; }
+  .contact-row-preview {
+    font-size: 0.8rem; color: var(--ink-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .unread-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
+
+  #list-empty {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    align-items: center; gap: 16px; padding: 24px 28px 40px; text-align: center;
   }
   .lockmark {
     width: 52px; height: 52px; border-radius: 16px;
     background: var(--accent-soft); color: var(--accent);
     display: flex; align-items: center; justify-content: center;
-    margin: 0 auto;
   }
   .lockmark .icon { width: 26px; height: 26px; }
-  #onboarding h1 {
-    text-align: center; font-size: 1.3rem; font-weight: 700; margin: 0;
-    text-wrap: balance;
+  #list-empty h1 { font-size: 1.2rem; font-weight: 700; margin: 0; text-wrap: balance; }
+  #list-empty p { color: var(--ink-muted); font-size: 0.85rem; line-height: 1.5; max-width: 300px; margin: 0; }
+
+  .fab {
+    position: absolute; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-ink);
+    border: none; box-shadow: var(--shadow-fab);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 5;
   }
-  #onboarding .lede {
-    text-align: center; color: var(--ink-muted); font-size: 0.85rem;
-    line-height: 1.5; max-width: 320px; margin: 0 auto;
+  .fab:active { transform: scale(0.94); }
+  .fab .icon { width: 24px; height: 24px; }
+
+  /* Chat-Detail */
+
+  #chat-area { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; }
+  .day-divider {
+    align-self: center; margin: 10px 0 6px;
+    font-size: 0.68rem; color: var(--ink-muted);
+    background: var(--surface-2); padding: 3px 10px; border-radius: 20px;
   }
 
-  .field-card {
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 16px;
-    padding: 16px;
-    box-shadow: var(--shadow);
-    display: flex; flex-direction: column; gap: 10px;
-  }
-  .field-label {
-    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em;
-    text-transform: uppercase; color: var(--ink-muted);
-  }
-  .idbox {
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.68rem; word-break: break-all; line-height: 1.5;
-    background: var(--surface-2); border-radius: 10px; padding: 10px 12px;
-  }
-
-  .btn-row { display: flex; gap: 8px; }
-  button { font-family: inherit; }
-  .btn {
-    font-size: 0.83rem; font-weight: 500;
-    border-radius: 10px; border: 1px solid var(--hairline);
-    padding: 9px 14px; cursor: pointer;
-    background: var(--surface-2); color: var(--ink);
-    display: inline-flex; align-items: center; gap: 6px; justify-content: center;
-  }
-  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  .btn.danger { color: var(--danger); }
-  .btn:active { transform: translateY(1px); }
-  .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
-  .btn.full { width: 100%; }
-
-  .textline {
-    flex: 1; min-width: 0;
-    background: var(--surface-2);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
-    padding: 10px 12px;
-    color: var(--ink);
-    font-size: 0.85rem;
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-  }
-  .textline:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .field-hint { font-size: 0.72rem; color: var(--ink-muted); line-height: 1.45; }
-
-  /* ---------- Chat ---------- */
-
-  #chat-area {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .day-empty {
-    margin: auto;
-    text-align: center;
-    color: var(--ink-muted);
-    font-size: 0.8rem;
-    display: flex; flex-direction: column; gap: 6px; align-items: center;
-  }
-
-  .bubble-row { display: flex; margin: 3px 0; }
+  .bubble-row { display: flex; margin-top: 2px; }
+  .bubble-row.grouped-start { margin-top: 10px; }
   .bubble-row.mine { justify-content: flex-end; }
   .bubble-row.theirs { justify-content: flex-start; }
 
@@ -244,10 +240,21 @@
   .bubble-row.theirs .bubble { background: var(--them-bubble); color: var(--ink); border-bottom-left-radius: 4px; }
 
   .bubble-meta {
-    display: flex; align-items: center; gap: 4px;
+    display: flex; align-items: center; gap: 3px;
     font-size: 0.65rem; align-self: flex-end;
     opacity: 0.75;
   }
+  .tick { width: 14px; height: 9px; flex: none; }
+  .tick.read { opacity: 1; color: #4fc3ff; }
+
+  .typing-dots { display: flex; gap: 3px; align-items: center; padding: 2px 0; }
+  .typing-dots span {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+    animation: typingBounce 1.1s infinite ease-in-out;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes typingBounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5; } 30% { transform: translateY(-3px); opacity: 1; } }
 
   /* ---------- Composer ---------- */
 
@@ -261,88 +268,102 @@
     gap: 8px;
   }
   #composer input {
-    flex: 1;
-    border: none;
-    background: var(--surface-2);
-    border-radius: 22px;
-    padding: 11px 16px;
-    font-size: 0.92rem;
-    color: var(--ink);
-    font-family: inherit;
+    flex: 1; border: none; background: var(--surface-2); border-radius: 22px;
+    padding: 11px 16px; font-size: 0.92rem; color: var(--ink); font-family: inherit;
   }
   #composer input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   #send-btn {
     width: 40px; height: 40px; border-radius: 50%; flex: none;
     background: var(--accent); color: var(--accent-ink);
-    border: none; display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
+    border: none; display: flex; align-items: center; justify-content: center; cursor: pointer;
   }
   #send-btn:disabled { opacity: 0.4; }
   #send-btn .icon { width: 18px; height: 18px; margin-left: 1px; }
 
-  /* ---------- Settings-Sheet ---------- */
+  /* ---------- Sheets ---------- */
 
-  #sheet-backdrop {
-    position: fixed; inset: 0;
-    background: rgba(10, 12, 16, 0.4);
-    z-index: 10;
-  }
-  #settings-sheet {
-    position: fixed; left: 0; right: 0; bottom: 0;
-    z-index: 11;
-    max-width: 480px;
-    margin: 0 auto;
+  #sheet-backdrop { position: fixed; inset: 0; background: rgba(10, 12, 16, 0.4); z-index: 10; }
+  #sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 11;
+    max-width: 480px; margin: 0 auto;
     background: var(--surface);
     border-radius: 18px 18px 0 0;
     box-shadow: var(--shadow);
-    max-height: 85vh;
-    overflow-y: auto;
+    max-height: 88vh; overflow-y: auto;
     padding: 14px 16px calc(20px + env(safe-area-inset-bottom, 0px));
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+    display: flex; flex-direction: column; gap: 14px;
   }
-  .sheet-handle {
-    width: 36px; height: 4px; border-radius: 2px;
-    background: var(--hairline); margin: 0 auto;
-  }
-  .sheet-head {
-    display: flex; align-items: center; justify-content: space-between;
-  }
+  .sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--hairline); margin: 0 auto; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; }
   .sheet-head h2 { font-size: 1rem; margin: 0; }
+
+  .field-card {
+    background: var(--surface-2);
+    border-radius: 14px; padding: 14px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .field-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-muted); }
+  .idbox {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.68rem; word-break: break-all; line-height: 1.5;
+    background: var(--surface); border-radius: 10px; padding: 10px 12px;
+  }
+  .field-hint { font-size: 0.72rem; color: var(--ink-muted); line-height: 1.45; }
+
+  .btn-row { display: flex; gap: 8px; }
+  button { font-family: inherit; }
+  .btn {
+    font-size: 0.83rem; font-weight: 500;
+    border-radius: 10px; border: 1px solid var(--hairline);
+    padding: 9px 14px; cursor: pointer;
+    background: var(--surface); color: var(--ink);
+    display: inline-flex; align-items: center; gap: 6px; justify-content: center;
+  }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.danger { color: var(--danger); }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+  .btn.full { width: 100%; }
+
+  .textline {
+    flex: 1; min-width: 0;
+    background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px;
+    padding: 10px 12px; color: var(--ink); font-size: 0.85rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  .textline:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   details.techlog { border: 1px solid var(--hairline); border-radius: 12px; padding: 10px 12px; }
   details.techlog summary { cursor: pointer; font-weight: 500; font-size: 0.85rem; }
   .tests { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .tests .btn { font-size: 0.74rem; padding: 6px 10px; }
   .techlines {
-    margin-top: 10px;
-    display: flex; flex-direction: column; gap: 3px;
+    margin-top: 10px; display: flex; flex-direction: column; gap: 3px;
     font-family: "IBM Plex Mono", ui-monospace, monospace;
     font-size: 0.66rem; color: var(--ink-muted);
-    word-break: break-all; max-height: 180px; overflow-y: auto;
+    word-break: break-all; max-height: 160px; overflow-y: auto;
   }
   .techlines .ok { color: var(--ok); }
   .techlines .fail { color: var(--danger); }
   .techlines .warn { color: var(--warn); }
 
-  .sheet-footer {
-    color: var(--ink-muted); font-size: 0.7rem; line-height: 1.55;
-    border-top: 1px solid var(--hairline); padding-top: 10px;
-  }
+  .sheet-footer { color: var(--ink-muted); font-size: 0.7rem; line-height: 1.55; border-top: 1px solid var(--hairline); padding-top: 10px; }
 
   [hidden] { display: none !important; }
 </style>
 
 <div id="app">
   <header>
-    <button class="icon-btn" id="back-btn" hidden aria-label="Zurück">
+    <button class="icon-btn" id="back-btn" hidden aria-label="Zurück zur Chat-Liste">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
-    <div class="avatar" id="header-avatar">CW</div>
+    <div class="brandmark" id="header-brand">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+    </div>
+    <div class="avatar" id="header-avatar" style="display:none;"></div>
     <div class="header-text">
-      <div class="header-title" id="header-title">Cipher Wire</div>
-      <div class="header-sub">
+      <div class="header-title" id="header-title">Secure Messenger Secret</div>
+      <div class="header-sub" id="header-sub">
         <span class="status-dot" id="status-dot"></span>
         <span id="header-subtext">Verbinde…</span>
       </div>
@@ -352,105 +373,114 @@
     </button>
   </header>
 
-  <section id="onboarding">
-    <div class="lockmark">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-    </div>
-    <h1>Ende-zu-Ende verschlüsselt</h1>
-    <p class="lede">Jede Nachricht wird ausschließlich auf euren Geräten ver- und entschlüsselt. Ein Kontakt hinzufügen, um zu starten.</p>
-
-    <div class="field-card">
-      <div class="field-label">Deine ID</div>
-      <div class="idbox" id="my-id">wird erzeugt…</div>
-      <div class="btn-row">
-        <button class="btn full" id="copy-id" type="button">
-          <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          ID kopieren
-        </button>
+  <section id="view-list">
+    <div id="list-empty" hidden>
+      <div class="lockmark">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
       </div>
+      <h1>Ende-zu-Ende verschlüsselt</h1>
+      <p>Jede Nachricht wird ausschließlich auf euren Geräten ver- und entschlüsselt. Füge einen Kontakt hinzu, um zu starten.</p>
+      <button class="btn primary" id="empty-add-contact" type="button">Kontakt hinzufügen</button>
     </div>
-
-    <div class="field-card">
-      <div class="field-label">Kontakt hinzufügen</div>
-      <input type="text" class="textline" id="contact-input" placeholder="ID des anderen Geräts einfügen">
-      <button class="btn primary full" id="add-contact" type="button">Chat starten</button>
-      <p class="field-hint">ID persönlich oder außerhalb dieses Kanals austauschen — sonst ist eine Man-in-the-Middle-Zuordnung nicht ausgeschlossen.</p>
-    </div>
+    <div id="contact-list"></div>
+    <button class="fab" id="fab-add" aria-label="Kontakt hinzufügen">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
   </section>
 
-  <main id="chat-area" hidden></main>
-
-  <form id="composer" hidden>
-    <input type="text" id="send-input" placeholder="Nachricht" autocomplete="off">
-    <button type="submit" id="send-btn" aria-label="Senden">
-      <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M3 11.5 21 3l-6 18-4-7-8-2.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/></svg>
-    </button>
-  </form>
+  <section id="view-chat" hidden>
+    <main id="chat-area"></main>
+    <form id="composer">
+      <input type="text" id="send-input" placeholder="Nachricht" autocomplete="off">
+      <button type="submit" id="send-btn" aria-label="Senden">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11.5 21 3l-6 18-4-7-8-2.5Z"/></svg>
+      </button>
+    </form>
+  </section>
 </div>
 
 <div id="sheet-backdrop" hidden></div>
-<div id="settings-sheet" hidden>
+<div id="sheet" hidden>
   <div class="sheet-handle"></div>
-  <div class="sheet-head">
-    <h2>Verschlüsselung &amp; Details</h2>
-    <button class="icon-btn" id="close-sheet" aria-label="Schließen">
+
+  <!-- Modus: Einstellungen -->
+  <div id="sheet-settings" hidden>
+    <div class="sheet-head"><h2>Einstellungen</h2><button class="icon-btn" id="close-sheet-1" aria-label="Schließen">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
-    </button>
+    </button></div>
+    <div class="field-card">
+      <div class="field-label">Deine ID</div>
+      <div class="idbox" id="my-id"></div>
+      <button class="btn full" id="copy-id" type="button">ID kopieren</button>
+    </div>
+    <details class="techlog">
+      <summary>Technisches Log &amp; Gegenproben</summary>
+      <div class="tests">
+        <button class="btn" id="test-tamper" type="button">Manipulation testen</button>
+        <button class="btn" id="test-forged-eph" type="button">Fake-Signatur testen</button>
+        <button class="btn" id="test-clear" type="button">Log leeren</button>
+      </div>
+      <div class="techlines" id="techlines"></div>
+    </details>
+    <p class="sheet-footer">
+      Jede Nachricht nutzt ein frisches, per Ed25519 signiertes Ephemeral-
+      X25519-Schlüsselpaar (ähnlich X3DH) statt direkt den Langzeit-Key — ein
+      später gestohlener Langzeit-Key entschlüsselt damit keine bereits
+      verschickten Nachrichten (Forward Secrecy gegen
+      Sender-Kompromittierung; volle Double-Ratchet-Sicherheit ist ein
+      offener Punkt, siehe README Fallstrick Nr. 1). Zustellstatus und
+      Tippt-Anzeige laufen durch dieselbe Verschlüsselung. Transport über
+      den öffentlichen Test-Broker <code>test.mosquitto.org</code> als
+      Platzhalter für den echten Relay-Server
+      (<code>backend/src/main.rs</code>) — Topic-Namen/Zeitpunkte sind auf
+      diesem öffentlichen Broker für Dritte einsehbar. Identitäts-Keys
+      liegen zum Testen im <code>localStorage</code> dieses Browsers
+      (Klartext) — siehe die nativen Referenzdateien für die gehärtete
+      Keychain/Keystore-Variante.
+    </p>
   </div>
 
-  <div class="field-card">
-    <div class="field-label">Deine ID</div>
-    <div class="idbox" id="my-id-sheet"></div>
-    <div class="btn-row">
-      <button class="btn full" id="copy-id-sheet" type="button">ID kopieren</button>
+  <!-- Modus: Kontakt hinzufügen -->
+  <div id="sheet-addcontact" hidden>
+    <div class="sheet-head"><h2>Kontakt hinzufügen</h2><button class="icon-btn" id="close-sheet-2" aria-label="Schließen">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button></div>
+    <div class="field-card">
+      <div class="field-label">Deine ID (dem Kontakt geben)</div>
+      <div class="idbox" id="my-id-2"></div>
+      <button class="btn full" id="copy-id-2" type="button">ID kopieren</button>
+    </div>
+    <div class="field-card">
+      <div class="field-label">ID des Kontakts</div>
+      <input type="text" class="textline" id="contact-input" placeholder="ID einfügen">
+      <button class="btn primary full" id="add-contact" type="button">Chat starten</button>
+      <p class="field-hint">Persönlich oder außerhalb dieses Kanals austauschen — sonst ist eine Man-in-the-Middle-Zuordnung nicht ausgeschlossen.</p>
     </div>
   </div>
 
-  <div class="field-card" id="contact-card-sheet" hidden>
-    <div class="field-label">Aktueller Kontakt</div>
-    <div class="idbox" id="contact-id-sheet"></div>
+  <!-- Modus: Kontakt-Info -->
+  <div id="sheet-contactinfo" hidden>
+    <div class="sheet-head"><h2>Kontakt</h2><button class="icon-btn" id="close-sheet-3" aria-label="Schließen">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button></div>
+    <div class="field-card">
+      <div class="field-label">ID / Fingerprint</div>
+      <div class="idbox" id="contact-id-sheet"></div>
+    </div>
     <button class="btn danger full" id="remove-contact" type="button">
       <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-      Kontakt entfernen
+      Kontakt &amp; Verlauf entfernen
     </button>
   </div>
-
-  <details class="techlog">
-    <summary>Technisches Log &amp; Gegenproben</summary>
-    <div class="tests">
-      <button class="btn" id="test-tamper" type="button">Manipulation testen</button>
-      <button class="btn" id="test-forged-eph" type="button">Fake-Signatur testen</button>
-      <button class="btn" id="test-clear" type="button">Log leeren</button>
-    </div>
-    <div class="techlines" id="techlines"></div>
-  </details>
-
-  <p class="sheet-footer">
-    Jede Nachricht nutzt ein frisches, per Ed25519 signiertes Ephemeral-
-    X25519-Schlüsselpaar (ähnlich X3DH) statt direkt den Langzeit-Key — ein
-    später gestohlener Langzeit-Key entschlüsselt damit keine bereits
-    verschickten Nachrichten (Forward Secrecy gegen
-    Sender-Kompromittierung; volle Double-Ratchet-Sicherheit ist ein
-    offener Punkt, siehe README Fallstrick Nr. 1). Transport läuft über den
-    öffentlichen Test-Broker <code>test.mosquitto.org</code> als
-    Platzhalter für den echten "blinden" Relay-Server
-    (<code>backend/src/main.rs</code>) — Inhalte bleiben E2EE-verschlüsselt,
-    aber Topic-Namen/Zeitpunkte sind auf diesem öffentlichen Broker für
-    Dritte einsehbar. Identitäts-Keys liegen zum Testen im
-    <code>localStorage</code> dieses Browsers (Klartext) — siehe die
-    nativen Referenzdateien für die gehärtete Keychain/Keystore-Variante.
-  </p>
 </div>
 
 <script>
 (function () {
   "use strict";
 
-  // ---------- Hilfsfunktionen ----------
+  // ================= Hilfsfunktionen =================
 
-  function toHex(bytes) {
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
-  }
+  function toHex(bytes) { return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join(""); }
   function fromHex(hex) {
     var bytes = new Uint8Array(hex.length / 2);
     for (var i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
@@ -459,9 +489,20 @@
   function shortHex(bytes, n) { return toHex(bytes.slice(0, n || 6)) + "…"; }
   function utf8Encode(str) { return new TextEncoder().encode(str); }
   function utf8Decode(bytes) { return new TextDecoder().decode(bytes); }
+  function randomId() { var b = new Uint8Array(8); crypto.getRandomValues(b); return toHex(b); }
   function formatTime(ts) {
     var d = new Date(ts);
     return d.getHours().toString().padStart(2, "0") + ":" + d.getMinutes().toString().padStart(2, "0");
+  }
+  function dayLabel(ts) {
+    var d = new Date(ts), today = new Date(), yest = new Date(today); yest.setDate(today.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return "Heute";
+    if (d.toDateString() === yest.toDateString()) return "Gestern";
+    return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+  function hueFor(hex) { return (parseInt(hex.slice(0, 2), 16) * 137.508) % 360; }
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
   }
 
   var techlines = document.getElementById("techlines");
@@ -473,43 +514,26 @@
     techlines.scrollTop = techlines.scrollHeight;
   }
 
-  function setStatus(state, text) {
-    document.getElementById("status-dot").className = "status-dot " + state;
-    document.getElementById("header-subtext").textContent = text;
-  }
-
   function safeLocalStorage() {
-    try {
-      var k = "__cipherwire_probe__";
-      localStorage.setItem(k, "1");
-      localStorage.removeItem(k);
-      return localStorage;
-    } catch (e) { return null; }
+    try { var k = "__sms_probe__"; localStorage.setItem(k, "1"); localStorage.removeItem(k); return localStorage; }
+    catch (e) { return null; }
   }
   var storage = safeLocalStorage();
   function storageGet(key) { try { return storage ? storage.getItem(key) : null; } catch (e) { return null; } }
   function storageSet(key, val) { try { if (storage) storage.setItem(key, val); } catch (e) {} }
-  function storageRemove(key) { try { if (storage) storage.removeItem(key); } catch (e) {} }
 
-  function copyText(text) {
-    navigator.clipboard.writeText(text).catch(function () {});
-  }
+  function copyText(text) { navigator.clipboard.writeText(text).catch(function () {}); }
 
-  // ---------- Identität ----------
+  // ================= Identität =================
 
   function generateIdentity() {
-    var box = nacl.box.keyPair();
-    var sign = nacl.sign.keyPair();
-    return {
-      boxPub: box.publicKey, boxSec: box.secretKey,
-      signPub: sign.publicKey, signSec: sign.secretKey
-    };
+    var box = nacl.box.keyPair(), sign = nacl.sign.keyPair();
+    return { boxPub: box.publicKey, boxSec: box.secretKey, signPub: sign.publicKey, signSec: sign.secretKey };
   }
   function serializeIdentity(id) { return toHex(id.boxSec) + "." + toHex(id.signSec); }
   function deserializeIdentity(s) {
     var parts = s.split(".");
-    var boxSec = fromHex(parts[0]);
-    var signSec = fromHex(parts[1]);
+    var boxSec = fromHex(parts[0]), signSec = fromHex(parts[1]);
     return {
       boxSec: boxSec, boxPub: nacl.box.keyPair.fromSecretKey(boxSec).publicKey,
       signSec: signSec, signPub: nacl.sign.keyPair.fromSecretKey(signSec).publicKey
@@ -523,136 +547,256 @@
   }
 
   var me = (function () {
-    var stored = storageGet("cipherwire_identity");
-    if (stored) {
-      try { return deserializeIdentity(stored); } catch (e) {}
-    }
+    var stored = storageGet("sms_identity");
+    if (stored) { try { return deserializeIdentity(stored); } catch (e) {} }
     var fresh = generateIdentity();
-    storageSet("cipherwire_identity", serializeIdentity(fresh));
+    storageSet("sms_identity", serializeIdentity(fresh));
     return fresh;
   })();
 
   document.getElementById("my-id").textContent = idString(me);
-  document.getElementById("my-id-sheet").textContent = idString(me);
-  ["copy-id", "copy-id-sheet"].forEach(function (id) {
+  document.getElementById("my-id-2").textContent = idString(me);
+  ["copy-id", "copy-id-2"].forEach(function (id) {
     document.getElementById(id).addEventListener("click", function () { copyText(idString(me)); });
   });
 
-  // ---------- Kontakt & Verlauf ----------
+  // ================= Kontakte & Unterhaltungen =================
 
-  var contact = null;
-  var history = [];
-  (function loadContact() {
-    var stored = storageGet("cipherwire_contact");
-    if (!stored) return;
-    var parsed = parseIdString(stored);
-    if (parsed) contact = parsed;
-    var storedHistory = storageGet("cipherwire_history");
-    if (storedHistory) {
-      try { history = JSON.parse(storedHistory); } catch (e) { history = []; }
-    }
+  // contacts: [{ boxPub, signPub, addedAt }]   (Public Keys als Hex gespeichert)
+  // conversations: { <boxPubHex>: [ { id, text, mine, t, status?, ackState? } ] }
+  var contacts = [];
+  var conversations = {};
+  var activeContactHex = null; // welcher Chat gerade offen ist (für Read-Receipts + Tippt-Anzeige)
+
+  (function loadState() {
+    try { contacts = JSON.parse(storageGet("sms_contacts") || "[]"); } catch (e) { contacts = []; }
+    try { conversations = JSON.parse(storageGet("sms_conversations") || "{}"); } catch (e) { conversations = {}; }
   })();
+  function saveContacts() { storageSet("sms_contacts", JSON.stringify(contacts)); }
+  function saveConversations() { storageSet("sms_conversations", JSON.stringify(conversations)); }
 
-  function saveHistory() { storageSet("cipherwire_history", JSON.stringify(history)); }
+  function findContact(boxPubHex) {
+    for (var i = 0; i < contacts.length; i++) if (contacts[i].boxPub === boxPubHex) return contacts[i];
+    return null;
+  }
+  // ================= Chat-Liste rendern =================
 
-  function refreshUI() {
-    var hasContact = !!contact;
-    document.getElementById("onboarding").hidden = hasContact;
-    document.getElementById("chat-area").hidden = !hasContact;
-    document.getElementById("composer").hidden = !hasContact;
-    document.getElementById("back-btn").hidden = !hasContact;
-    document.getElementById("contact-card-sheet").hidden = !hasContact;
-
-    if (hasContact) {
-      var fp = shortHex(contact.boxPub, 3);
-      document.getElementById("header-avatar").textContent = toHex(contact.boxPub).slice(0, 2).toUpperCase();
-      document.getElementById("header-title").textContent = fp;
-      document.getElementById("contact-id-sheet").textContent = toHex(contact.boxPub) + "." + toHex(contact.signPub);
-      renderMessages();
-    } else {
-      document.getElementById("header-avatar").textContent = "CW";
-      document.getElementById("header-title").textContent = "Cipher Wire";
-    }
+  function lastMessageOf(hex) {
+    var conv = conversations[hex] || [];
+    return conv.length ? conv[conv.length - 1] : null;
   }
 
-  function renderMessages() {
+  function renderList() {
+    var listEl = document.getElementById("contact-list");
+    var emptyEl = document.getElementById("list-empty");
+    emptyEl.hidden = contacts.length > 0;
+    listEl.hidden = contacts.length === 0;
+    listEl.innerHTML = "";
+
+    var sorted = contacts.slice().sort(function (a, b) {
+      var la = lastMessageOf(a.boxPub), lb = lastMessageOf(b.boxPub);
+      return (lb ? lb.t : b.addedAt) - (la ? la.t : a.addedAt);
+    });
+
+    sorted.forEach(function (c) {
+      var last = lastMessageOf(c.boxPub);
+      var row = document.createElement("div");
+      row.className = "contact-row";
+      row.innerHTML =
+        '<div class="avatar" style="--h:' + hueFor(c.boxPub) + '">' + c.boxPub.slice(0, 2).toUpperCase() + '</div>' +
+        '<div class="contact-row-text">' +
+          '<div class="contact-row-top">' +
+            '<div class="contact-row-name">' + c.boxPub.slice(0, 12) + '…</div>' +
+            '<div class="contact-row-time">' + (last ? formatTime(last.t) : "") + '</div>' +
+          '</div>' +
+          '<div class="contact-row-preview">' + (last ? escapeHtml((last.mine ? "Du: " : "") + last.text) : "Noch keine Nachrichten") + '</div>' +
+        '</div>';
+      row.addEventListener("click", function () { openChat(c.boxPub); });
+      listEl.appendChild(row);
+    });
+  }
+
+  // ================= Chat-Detail rendern =================
+
+  function openChat(boxPubHex) {
+    activeContactHex = boxPubHex;
+    var c = findContact(boxPubHex);
+    document.getElementById("view-list").hidden = true;
+    var chatView = document.getElementById("view-chat");
+    chatView.hidden = false;
+    chatView.classList.remove("entering"); void chatView.offsetWidth; chatView.classList.add("entering");
+    document.getElementById("back-btn").hidden = false;
+    document.getElementById("header-brand").style.display = "none";
+    var avatarEl = document.getElementById("header-avatar");
+    avatarEl.style.display = "flex";
+    avatarEl.style.setProperty("--h", hueFor(boxPubHex));
+    avatarEl.textContent = boxPubHex.slice(0, 2).toUpperCase();
+    var titleEl = document.getElementById("header-title");
+    titleEl.textContent = boxPubHex.slice(0, 12) + "…";
+    titleEl.className = "header-title tappable";
+    titleEl.onclick = function () { openSheet("contactinfo"); };
+    document.getElementById("contact-id-sheet").textContent = c.boxPub + "." + c.signPub;
+    setHeaderSubtext();
+    sendReadReceiptsFor(boxPubHex);
+    renderMessages(boxPubHex);
+  }
+
+  function closeChat() {
+    activeContactHex = null;
+    document.getElementById("view-chat").hidden = true;
+    document.getElementById("view-list").hidden = false;
+    document.getElementById("back-btn").hidden = true;
+    document.getElementById("header-brand").style.display = "flex";
+    document.getElementById("header-avatar").style.display = "none";
+    var titleEl = document.getElementById("header-title");
+    titleEl.textContent = "Secure Messenger Secret";
+    titleEl.className = "header-title";
+    titleEl.onclick = null;
+    setHeaderSubtext();
+    renderList();
+  }
+  document.getElementById("back-btn").addEventListener("click", closeChat);
+
+  function tickSvg(status) {
+    if (status === "sent") {
+      return '<svg class="tick" viewBox="0 0 16 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 5 6 9 15 1"/></svg>';
+    }
+    var cls = status === "read" ? "tick read" : "tick";
+    return '<svg class="' + cls + '" viewBox="0 0 16 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 5 6 9 11 1"/><polyline points="5 5 10 9 15 1"/></svg>';
+  }
+
+  function renderMessages(boxPubHex) {
     var area = document.getElementById("chat-area");
     area.innerHTML = "";
-    if (history.length === 0) {
-      var empty = document.createElement("div");
-      empty.className = "day-empty";
-      empty.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Verschlüsselte Unterhaltung beginnt hier.</span>';
-      area.appendChild(empty);
+    var conv = conversations[boxPubHex] || [];
+    if (conv.length === 0) {
+      area.innerHTML = '<div style="margin:auto;text-align:center;color:var(--ink-muted);font-size:0.8rem;">Verschlüsselte Unterhaltung beginnt hier.</div>';
       return;
     }
-    history.forEach(function (m) {
+    var lastDay = null, lastMine = null, lastT = 0;
+    conv.forEach(function (m) {
+      var label = dayLabel(m.t);
+      if (label !== lastDay) {
+        var div = document.createElement("div");
+        div.className = "day-divider"; div.textContent = label;
+        area.appendChild(div);
+        lastDay = label; lastMine = null;
+      }
+      var grouped = (m.mine === lastMine) && (m.t - lastT < 5 * 60 * 1000);
       var row = document.createElement("div");
-      row.className = "bubble-row " + (m.mine ? "mine" : "theirs");
+      row.className = "bubble-row " + (m.mine ? "mine" : "theirs") + (grouped ? "" : " grouped-start");
       var bubble = document.createElement("div");
       bubble.className = "bubble";
       var text = document.createElement("div");
       text.textContent = m.text;
       var meta = document.createElement("div");
       meta.className = "bubble-meta";
-      meta.innerHTML = '<svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>' + formatTime(m.t) + '</span>';
-      bubble.appendChild(text);
-      bubble.appendChild(meta);
+      meta.innerHTML = "<span>" + formatTime(m.t) + "</span>" + (m.mine ? tickSvg(m.status || "sent") : "");
+      bubble.appendChild(text); bubble.appendChild(meta);
       row.appendChild(bubble);
       area.appendChild(row);
+      lastMine = m.mine; lastT = m.t;
     });
     area.scrollTop = area.scrollHeight;
   }
 
-  function appendMessage(text, mine) {
-    history.push({ text: text, mine: mine, t: Date.now() });
-    saveHistory();
-    renderMessages();
+  function appendMessage(boxPubHex, msg) {
+    if (!conversations[boxPubHex]) conversations[boxPubHex] = [];
+    conversations[boxPubHex].push(msg);
+    saveConversations();
+    if (activeContactHex === boxPubHex) renderMessages(boxPubHex);
+    else renderList();
   }
+
+  function updateMessageStatus(boxPubHex, msgId, status) {
+    var conv = conversations[boxPubHex] || [];
+    for (var i = 0; i < conv.length; i++) {
+      if (conv[i].id === msgId && conv[i].mine) {
+        // "read" überschreibt "delivered", aber nicht umgekehrt (kein Rückschritt).
+        if (!(conv[i].status === "read" && status === "delivered")) conv[i].status = status;
+        break;
+      }
+    }
+    saveConversations();
+    if (activeContactHex === boxPubHex) renderMessages(boxPubHex);
+  }
+
+  // ================= Kontakt hinzufügen / entfernen =================
 
   document.getElementById("add-contact").addEventListener("click", function () {
     var raw = document.getElementById("contact-input").value;
     var parsed = parseIdString(raw);
-    if (!parsed) {
-      logLine("✗ Ungültiges ID-Format (erwartet: 64 Hex-Zeichen . 64 Hex-Zeichen)", "fail");
-      return;
+    if (!parsed) { logLine("✗ Ungültiges ID-Format (erwartet: 64 Hex . 64 Hex)", "fail"); return; }
+    var boxHex = toHex(parsed.boxPub), signHex = toHex(parsed.signPub);
+    if (!findContact(boxHex)) {
+      contacts.push({ boxPub: boxHex, signPub: signHex, addedAt: Date.now() });
+      saveContacts();
     }
-    contact = parsed;
-    storageSet("cipherwire_contact", toHex(parsed.boxPub) + "." + toHex(parsed.signPub));
-    history = [];
-    saveHistory();
+    document.getElementById("contact-input").value = "";
     subscribeInbox();
-    refreshUI();
+    closeSheet();
+    openChat(boxHex);
   });
 
-  document.getElementById("back-btn").addEventListener("click", function () {
-    contact = null;
-    refreshUI();
-  });
+  document.getElementById("empty-add-contact").addEventListener("click", function () { openSheet("addcontact"); });
+  document.getElementById("fab-add").addEventListener("click", function () { openSheet("addcontact"); });
 
   document.getElementById("remove-contact").addEventListener("click", function () {
-    contact = null;
-    history = [];
-    storageRemove("cipherwire_contact");
-    storageRemove("cipherwire_history");
+    if (!activeContactHex) return;
+    contacts = contacts.filter(function (c) { return c.boxPub !== activeContactHex; });
+    delete conversations[activeContactHex];
+    saveContacts(); saveConversations();
     closeSheet();
-    refreshUI();
+    closeChat();
   });
 
-  // ---------- Settings-Sheet ----------
+  // ================= Settings-Sheet (3 Modi) =================
 
-  function openSheet() {
-    document.getElementById("settings-sheet").hidden = false;
+  function openSheet(mode) {
+    ["settings", "addcontact", "contactinfo"].forEach(function (m) {
+      document.getElementById("sheet-" + m).hidden = m !== mode;
+    });
+    document.getElementById("sheet").hidden = false;
     document.getElementById("sheet-backdrop").hidden = false;
   }
   function closeSheet() {
-    document.getElementById("settings-sheet").hidden = true;
+    document.getElementById("sheet").hidden = true;
     document.getElementById("sheet-backdrop").hidden = true;
   }
-  document.getElementById("settings-btn").addEventListener("click", openSheet);
-  document.getElementById("close-sheet").addEventListener("click", closeSheet);
+  document.getElementById("settings-btn").addEventListener("click", function () { openSheet("settings"); });
+  ["close-sheet-1", "close-sheet-2", "close-sheet-3"].forEach(function (id) {
+    document.getElementById(id).addEventListener("click", closeSheet);
+  });
   document.getElementById("sheet-backdrop").addEventListener("click", closeSheet);
 
-  // ---------- Kryptografie: signiertes Ephemeral crypto_box (Forward Secrecy) ----------
+  var lastConnStatus = { state: "warn", text: "Verbinde…" };
+  function setStatus(state, text) {
+    lastConnStatus = { state: state, text: text };
+    document.getElementById("status-dot").className = "status-dot " + state;
+    if (!activeContactHex) document.getElementById("header-subtext").textContent = text;
+  }
+
+  function setHeaderSubtext() {
+    if (activeContactHex) {
+      document.getElementById("header-sub").classList.remove("typing");
+      document.getElementById("header-subtext").innerHTML = "Ende-zu-Ende verschlüsselt";
+    } else {
+      document.getElementById("header-sub").classList.remove("typing");
+      document.getElementById("status-dot").className = "status-dot " + lastConnStatus.state;
+      document.getElementById("header-subtext").textContent = lastConnStatus.text;
+    }
+  }
+
+  var typingTimers = {};
+  function showTyping(boxPubHex) {
+    if (activeContactHex !== boxPubHex) return;
+    document.getElementById("header-sub").classList.add("typing");
+    document.getElementById("header-subtext").innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span> tippt gerade…';
+    clearTimeout(typingTimers[boxPubHex]);
+    typingTimers[boxPubHex] = setTimeout(function () { setHeaderSubtext(); }, 4000);
+  }
+
+  // ================= Kryptografie: signiertes Ephemeral crypto_box =================
   //
   // Statt direkt mit dem Langzeit-Box-Key zu verschlüsseln, erzeugt der
   // Sender pro Nachricht ein frisches X25519-Ephemeral-Paar, signiert dessen
@@ -661,46 +805,63 @@
   // (ephemeralSecret, empfängerBoxPub). Der Ephemeral-Secret-Key wird sofort
   // nach dem Senden verworfen -- ein später gestohlener Langzeit-Box-Key
   // des Senders erlaubt damit KEINE Entschlüsselung dieser Nachricht mehr.
+  // Siehe PROTOCOL.md für das Format des verschlüsselten Inhalts (v2:
+  // strukturiertes JSON mit type "msg"/"receipt"/"typing").
 
-  function encryptForward(plaintext, recipientBoxPub) {
+  function encryptForward(plaintextObj, recipientBoxPub) {
     var eph = nacl.box.keyPair();
     var ephSig = nacl.sign.detached(eph.publicKey, me.signSec);
     var nonce = nacl.randomBytes(24);
-    var ciphertext = nacl.box(utf8Encode(plaintext), nonce, recipientBoxPub, eph.secretKey);
+    var ciphertext = nacl.box(utf8Encode(JSON.stringify(plaintextObj)), nonce, recipientBoxPub, eph.secretKey);
     return {
-      senderBoxPub: toHex(me.boxPub),
-      senderSignPub: toHex(me.signPub),
-      ephPub: toHex(eph.publicKey),
-      ephSig: toHex(ephSig),
-      nonce: toHex(nonce),
-      ciphertext: toHex(ciphertext)
+      senderBoxPub: toHex(me.boxPub), senderSignPub: toHex(me.signPub),
+      ephPub: toHex(eph.publicKey), ephSig: toHex(ephSig),
+      nonce: toHex(nonce), ciphertext: toHex(ciphertext)
     };
   }
 
   function decryptForward(envelope, expectedSignPub, myBoxSec) {
-    var ephPub = fromHex(envelope.ephPub);
-    var ephSig = fromHex(envelope.ephSig);
+    var ephPub = fromHex(envelope.ephPub), ephSig = fromHex(envelope.ephSig);
     var signPub = expectedSignPub || fromHex(envelope.senderSignPub);
-
-    var sigOk = nacl.sign.detached.verify(ephPub, ephSig, signPub);
-    if (!sigOk) throw new Error("Ephemeral-Signatur ungültig");
-
+    if (!nacl.sign.detached.verify(ephPub, ephSig, signPub)) throw new Error("Ephemeral-Signatur ungültig");
     var opened = nacl.box.open(fromHex(envelope.ciphertext), fromHex(envelope.nonce), ephPub, myBoxSec);
     if (!opened) throw new Error("Entschlüsselung fehlgeschlagen");
-    return utf8Decode(opened);
+    return JSON.parse(utf8Decode(opened));
   }
 
-  // ---------- Transport: öffentliches MQTT-Test-Relay (Platzhalter für main.rs) ----------
+  function sendPayload(recipientBoxPubHex, plaintextObj) {
+    var envelope = encryptForward(plaintextObj, fromHex(recipientBoxPubHex));
+    if (mqttClient && mqttClient.connected) {
+      mqttClient.publish(topicFor(recipientBoxPubHex), JSON.stringify(envelope));
+    } else {
+      logLine("✗ Nicht verbunden -- konnte nicht gesendet werden", "fail");
+    }
+    return envelope;
+  }
+
+  function sendReadReceiptsFor(boxPubHex) {
+    var conv = conversations[boxPubHex] || [];
+    var changed = false;
+    conv.forEach(function (m) {
+      if (!m.mine && m.ackState !== "read") {
+        sendPayload(boxPubHex, { type: "receipt", refId: m.id, kind: "read" });
+        m.ackState = "read";
+        changed = true;
+      }
+    });
+    if (changed) saveConversations();
+  }
+
+  // ================= Transport: öffentliches MQTT-Test-Relay =================
 
   var TOPIC_PREFIX = "cipherwire-demo-v1/";
   var mqttClient = null;
-
   function topicFor(boxPubHex) { return TOPIC_PREFIX + boxPubHex; }
 
   function connectTransport() {
     setStatus("warn", "Verbinde…");
     mqttClient = mqtt.connect("wss://test.mosquitto.org:8081/mqtt", {
-      clientId: "cipherwire-" + Math.random().toString(16).slice(2),
+      clientId: "sms-" + Math.random().toString(16).slice(2),
       reconnectPeriod: 4000
     });
 
@@ -719,17 +880,23 @@
     mqttClient.on("message", function (topic, payloadBuf) {
       var envelope;
       try { envelope = JSON.parse(payloadBuf.toString()); } catch (e) { return; }
-      if (!contact) return;
-      if (envelope.senderBoxPub !== toHex(contact.boxPub)) {
-        logLine("✗ Nachricht von unbekannter/nicht hinzugefügter ID ignoriert", "warn");
-        return;
-      }
-      try {
-        var plain = decryptForward(envelope, contact.signPub, me.boxSec);
-        appendMessage(plain, false);
+      var senderHex = envelope.senderBoxPub;
+      var c = findContact(senderHex);
+      if (!c) { logLine("✗ Nachricht von unbekannter/nicht hinzugefügter ID ignoriert", "warn"); return; }
+
+      var payload;
+      try { payload = decryptForward(envelope, fromHex(c.signPub), me.boxSec); }
+      catch (e) { logLine("✗ Empfangene Nachricht verworfen: " + e.message, "fail"); return; }
+
+      if (payload.type === "msg") {
+        appendMessage(senderHex, { id: payload.id, text: payload.text, mine: false, t: Date.now(), ackState: "delivered" });
+        sendPayload(senderHex, { type: "receipt", refId: payload.id, kind: "delivered" });
         logLine("✓ Nachricht empfangen, Signatur + Verschlüsselung verifiziert", "ok");
-      } catch (e) {
-        logLine("✗ Empfangene Nachricht verworfen: " + e.message, "fail");
+        if (activeContactHex === senderHex) sendReadReceiptsFor(senderHex);
+      } else if (payload.type === "receipt") {
+        updateMessageStatus(senderHex, payload.refId, payload.kind === "read" ? "read" : "delivered");
+      } else if (payload.type === "typing") {
+        showTyping(senderHex);
       }
     });
   }
@@ -741,34 +908,40 @@
 
   connectTransport();
 
-  // ---------- Senden ----------
+  // ================= Senden / Tippen =================
+
+  var lastTypingSent = 0;
+  document.getElementById("send-input").addEventListener("input", function () {
+    if (!activeContactHex) return;
+    var now = Date.now();
+    if (now - lastTypingSent > 3000) {
+      sendPayload(activeContactHex, { type: "typing" });
+      lastTypingSent = now;
+    }
+  });
 
   document.getElementById("composer").addEventListener("submit", function (ev) {
     ev.preventDefault();
-    if (!contact) return;
+    if (!activeContactHex) return;
     var input = document.getElementById("send-input");
     var text = input.value.trim();
     if (!text) return;
     input.value = "";
 
-    appendMessage(text, true);
-    var envelope = encryptForward(text, contact.boxPub);
-    logLine("→ gesendet, Ephemeral-Key " + shortHex(fromHex(envelope.ephPub), 6) + ", Ciphertext " + shortHex(fromHex(envelope.ciphertext), 8));
-
-    if (mqttClient && mqttClient.connected) {
-      mqttClient.publish(topicFor(toHex(contact.boxPub)), JSON.stringify(envelope));
-    } else {
-      logLine("✗ Nicht verbunden -- Nachricht konnte nicht gesendet werden", "fail");
-    }
+    var id = randomId();
+    appendMessage(activeContactHex, { id: id, text: text, mine: true, t: Date.now(), status: "sent" });
+    sendPayload(activeContactHex, { type: "msg", id: id, text: text });
+    logLine("→ gesendet (" + id + ")");
   });
 
-  refreshUI();
+  renderList();
+  setHeaderSubtext();
 
-  // ---------- Gegenproben ----------
+  // ================= Gegenproben =================
 
   document.getElementById("test-tamper").addEventListener("click", function () {
-    var targetPub = contact ? contact.boxPub : nacl.box.keyPair().publicKey;
-    var env = encryptForward("Testnachricht für Manipulationsprobe", targetPub);
+    var targetPub = activeContactHex ? fromHex(activeContactHex) : nacl.box.keyPair().publicKey;
+    var env = encryptForward({ type: "msg", id: "test", text: "Testnachricht für Manipulationsprobe" }, targetPub);
     var tampered = fromHex(env.ciphertext);
     tampered[0] ^= 0xff;
     env.ciphertext = toHex(tampered);
@@ -776,9 +949,7 @@
     try {
       decryptForward(env, fromHex(env.senderSignPub), me.boxSec);
       logLine("✗ Fehler: Manipulation hätte erkannt werden müssen!", "fail");
-    } catch (e) {
-      logLine("✓ korrekt abgelehnt: " + e.message, "ok");
-    }
+    } catch (e) { logLine("✓ korrekt abgelehnt: " + e.message, "ok"); }
   });
 
   document.getElementById("test-forged-eph").addEventListener("click", function () {
@@ -786,7 +957,7 @@
     var forgedEph = nacl.box.keyPair();
     var forgedSig = nacl.sign.detached(forgedEph.publicKey, attacker.signSec);
     var nonce = nacl.randomBytes(24);
-    var ciphertext = nacl.box(utf8Encode("gefälscht"), nonce, me.boxPub, forgedEph.secretKey);
+    var ciphertext = nacl.box(utf8Encode(JSON.stringify({ type: "msg", id: "x", text: "gefälscht" })), nonce, me.boxPub, forgedEph.secretKey);
     var forgedEnvelope = {
       senderBoxPub: toHex(me.boxPub), senderSignPub: toHex(me.signPub),
       ephPub: toHex(forgedEph.publicKey), ephSig: toHex(forgedSig),
@@ -796,14 +967,10 @@
     try {
       decryptForward(forgedEnvelope, me.signPub, me.boxSec);
       logLine("✗ Fehler: gefälschte Signatur hätte erkannt werden müssen!", "fail");
-    } catch (e) {
-      logLine("✓ korrekt abgelehnt: " + e.message, "ok");
-    }
+    } catch (e) { logLine("✓ korrekt abgelehnt: " + e.message, "ok"); }
   });
 
-  document.getElementById("test-clear").addEventListener("click", function () {
-    techlines.innerHTML = "";
-  });
+  document.getElementById("test-clear").addEventListener("click", function () { techlines.innerHTML = ""; });
 
   logLine("Meine ID: " + idString(me));
 })();
